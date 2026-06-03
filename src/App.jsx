@@ -914,7 +914,7 @@ function AppWithData({ role, me, onSignOut }){
 
   const {
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages,
-    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles,
+    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
@@ -931,7 +931,7 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,requestReschedule,bookSession,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1082,7 +1082,7 @@ function _LegacyMockApp(){
 }
 
 /* =============================== ADMIN =============================== */
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
@@ -1242,7 +1242,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     </div>
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc)=>{addPatient(p,b,d,doc);setIntake(false);}}/>}
-    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles}/>}
+    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles}/>}
     {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
     {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
   </div>);
@@ -1998,7 +1998,8 @@ function PainTrend({data,height=170}){
   </AreaChart></ResponsiveContainer>);
 }
 
-function PatientFile({patient,notes,finances,visits,onClose,onDischarge,updatePatientStatus,updatePatientFiles,role="admin"}){
+function PatientFile({patient,notes,finances,visits,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,role="admin"}){
+  const[confirmDel,setConfirmDel]=useState(false);
   const hist=notes.filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
   const data=hist.map((n,i)=>({s:`S${i+1}`,date:n.date,before:n.painBefore,after:n.painAfter}));
   const sessions=hist.length, startPain=hist[0]?.painBefore??null, endPain=hist.length?hist[hist.length-1].painAfter:null;
@@ -2037,9 +2038,21 @@ function PatientFile({patient,notes,finances,visits,onClose,onDischarge,updatePa
             ? <button onClick={()=>setMode("discharge")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><LogOut size={15}/>Discharge</button>
             : <button onClick={()=>setMode("report")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><FileText size={15}/>Report</button>)}
           {role==="doctor"&&patient.status==="discharged"&&<button onClick={()=>setMode("report")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><FileText size={15}/>Report</button>}
+          {role==="admin"&&onDelete&&<button onClick={()=>setConfirmDel(true)} title="Delete patient permanently" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(192,57,43,0.22)"}}><Trash2 size={16} color="#fff"/></button>}
           <button onClick={onClose}><X size={22} color="#fff"/></button>
         </div>
       </div>
+
+      {confirmDel&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={()=>setConfirmDel(false)}>
+        <div className="w-full max-w-[400px] rounded-2xl p-6" style={{background:"#fff"}} onClick={e=>e.stopPropagation()}>
+          <div className="flex items-center gap-2.5 mb-2"><AlertTriangle size={20} color={C.red}/><h3 className="text-[17px] font-bold" style={{color:C.ink,fontFamily:"Georgia,serif"}}>Delete patient?</h3></div>
+          <p className="text-[13px] mb-4" style={{color:C.ink2}}>This permanently removes <b>{patient.name}</b> and all their sessions, SOAP notes and packages. Finance records (kept by name) stay in the books. This cannot be undone.</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={()=>setConfirmDel(false)} className="px-4 py-2 rounded-xl text-[13px] font-semibold" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Cancel</button>
+            <button onClick={()=>{setConfirmDel(false);onDelete();}} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold text-white" style={{background:C.red}}><Trash2 size={14}/>Delete permanently</button>
+          </div>
+        </div>
+      </div>}
 
       {/* sub-tab nav */}
       {mode==="profile"&&<div className="flex gap-1 px-4 py-2" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>

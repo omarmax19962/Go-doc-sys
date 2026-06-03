@@ -333,6 +333,26 @@ export function useDataStore({ role, me }) {
     notify('admin', `${pt?.name || 'Patient'} discharged — ${report?.improvePct ?? 0}% improvement over ${report?.sessions ?? 0} sessions`)
   }, [patients, changeStatus, notify])
 
+  // Permanently delete a patient and everything tied to them (visits, notes,
+  // packages). packages.patient_id is NO ACTION, so children are removed in
+  // order to avoid FK violations. finances are keyed by patient name, not id,
+  // so they are left in the books as historical revenue.
+  const removePatient = useCallback(async (pid) => {
+    const pt = patients.find((p) => p.id === pid)
+    // optimistic local cleanup
+    setPatients((ps) => ps.filter((p) => p.id !== pid))
+    setVisits((vs) => vs.filter((v) => v.patientId !== pid))
+    setNotes((ns) => ns.filter((n) => n.patientId !== pid))
+    setPackages((pk) => pk.filter((x) => x.patientId !== pid))
+    // delete children first, then the patient
+    await supabase.from('visits').delete().eq('patient_id', pid)
+    await supabase.from('notes').delete().eq('patient_id', pid)
+    await supabase.from('packages').delete().eq('patient_id', pid)
+    const { error } = await supabase.from('patients').delete().eq('id', pid)
+    if (error) { console.error('removePatient', error); return }
+    notify('admin', `Patient deleted: ${pt?.name || 'Unknown'}`)
+  }, [patients, notify])
+
   const updateDoctorSlots = useCallback(async (id, slots, actor = 'admin') => {
     const d = doctors.find((x) => x.id === id)
     setDoctors((ds) => ds.map((x) => x.id === id ? { ...x, slots } : x))
@@ -589,7 +609,7 @@ export function useDataStore({ role, me }) {
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages,
     loading, error,
     // mutations
-    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles,
+    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
