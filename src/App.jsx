@@ -1273,7 +1273,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     </div>
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc)=>{addPatient(p,b,d,doc);setIntake(false);}}/>}
-    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles}/>}
+    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} doctors={doctors} bookSession={bookSession} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles}/>}
     {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
     {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
   </div>);
@@ -1403,12 +1403,12 @@ function TimeGridHeader({title,view,setView,step,goToday}){
 
 /* ---------- BookingModal — Calendly-style: book existing or new patient ---------- */
 const DURATIONS=[30,45,60,90];
-function BookingModal({slot,doctors,patients,fixedDoctor,onClose,onBook}){
+function BookingModal({slot,doctors,patients,fixedDoctor,fixedPatient,onClose,onBook}){
   const[pmode,setPmode]=useState("existing");
   const[q,setQ]=useState("");
-  const[picked,setPicked]=useState(null);
+  const[picked,setPicked]=useState(fixedPatient||null);
   const[np,setNp]=useState({name:"",phone:"",complaint:"",source:""});
-  const[doctor,setDoctor]=useState(fixedDoctor||doctors?.[0]?.name||"");
+  const[doctor,setDoctor]=useState(fixedDoctor||(fixedPatient&&fixedPatient.doctor&&fixedPatient.doctor!=="—"?fixedPatient.doctor:"")||doctors?.[0]?.name||"");
   const[date,setDate]=useState(slot?.date||ymd(new Date()));
   const[time,setTime]=useState(slot?.time||"09:00");
   const[duration,setDuration]=useState(45);
@@ -1425,13 +1425,13 @@ function BookingModal({slot,doctors,patients,fixedDoctor,onClose,onBook}){
         <h2 className="text-[17px] font-bold" style={{fontFamily:"Georgia,serif"}}>Book a session</h2>
         <button onClick={onClose}><X size={20} color={C.grey}/></button></div>
       <div className="p-5 max-h-[72vh] overflow-y-auto space-y-3">
-        <div className="flex gap-1 p-1 rounded-xl" style={{background:"#e7e2d6"}}>
+        {!fixedPatient&&<div className="flex gap-1 p-1 rounded-xl" style={{background:"#e7e2d6"}}>
           {[["existing","Existing patient"],["new","New patient"]].map(([k,l])=>(<button key={k} onClick={()=>setPmode(k)} className="flex-1 py-2 rounded-lg text-[13px] font-bold" style={{background:pmode===k?C.teal:"transparent",color:pmode===k?C.ink:C.grey}}>{l}</button>))}
-        </div>
+        </div>}
         {pmode==="existing"?<div>
           {picked?<div className="flex items-center justify-between bg-white rounded-xl px-3 py-2.5" style={{border:`1px solid ${C.teal}`}}>
             <div><div className="text-[14px] font-bold" style={{color:C.ink}}>{picked.name}</div><div className="text-[11px]" style={{color:C.grey}}>{picked.phone||"no phone"} · {picked.zone||"—"}</div></div>
-            <button onClick={()=>setPicked(null)} className="text-[12px] font-semibold" style={{color:C.teal}}>Change</button></div>
+            {!fixedPatient&&<button onClick={()=>setPicked(null)} className="text-[12px] font-semibold" style={{color:C.teal}}>Change</button>}</div>
           :<><div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2.5" style={{border:`1px solid ${C.line}`}}><Search size={16} color={C.grey}/><input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Search name or phone…" className="flex-1 outline-none text-[14px]"/></div>
             <div className="mt-2 space-y-1 max-h-[160px] overflow-y-auto">{matches.map(p=>(<button key={p.id} onClick={()=>setPicked(p)} className="w-full flex items-center justify-between bg-white rounded-lg px-3 py-2 text-left" style={{border:`1px solid ${C.line}`}}>
               <span className="text-[13px] font-semibold" style={{color:C.ink}}>{p.name}</span><span className="text-[11px]" style={{color:C.grey}}>{p.phone}</span></button>))}
@@ -2029,8 +2029,9 @@ function PainTrend({data,height=170}){
   </AreaChart></ResponsiveContainer>);
 }
 
-function PatientFile({patient,notes,finances,visits,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,role="admin"}){
+function PatientFile({patient,notes,finances,visits,doctors,bookSession,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,role="admin"}){
   const[confirmDel,setConfirmDel]=useState(false);
+  const[booking,setBooking]=useState(false);
   const hist=notes.filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
   const data=hist.map((n,i)=>({s:`S${i+1}`,date:n.date,before:n.painBefore,after:n.painAfter}));
   const sessions=hist.length, startPain=hist[0]?.painBefore??null, endPain=hist.length?hist[hist.length-1].painAfter:null;
@@ -2069,10 +2070,13 @@ function PatientFile({patient,notes,finances,visits,onClose,onDischarge,onDelete
             ? <button onClick={()=>setMode("discharge")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><LogOut size={15}/>Discharge</button>
             : <button onClick={()=>setMode("report")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><FileText size={15}/>Report</button>)}
           {role==="doctor"&&patient.status==="discharged"&&<button onClick={()=>setMode("report")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><FileText size={15}/>Report</button>}
+          {role==="admin"&&bookSession&&patient.status!=="discharged"&&<button onClick={()=>setBooking(true)} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:"rgba(255,255,255,0.12)",color:"#fff"}}><Plus size={15}/>Add session</button>}
           {role==="admin"&&onDelete&&<button onClick={()=>setConfirmDel(true)} title="Delete patient permanently" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(192,57,43,0.22)"}}><Trash2 size={16} color="#fff"/></button>}
           <button onClick={onClose}><X size={22} color="#fff"/></button>
         </div>
       </div>
+
+      {booking&&<BookingModal slot={{date:today,time:"09:00"}} doctors={doctors} patients={[]} fixedPatient={patient} onClose={()=>setBooking(false)} onBook={async payload=>{await bookSession({...payload,booker:"admin"});}}/>}
 
       {confirmDel&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={()=>setConfirmDel(false)}>
         <div className="w-full max-w-[400px] rounded-2xl p-6" style={{background:"#fff"}} onClick={e=>e.stopPropagation()}>
