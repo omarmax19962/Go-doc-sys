@@ -76,6 +76,8 @@ export const fromVisit = (r) => ({
   rescheduledToId: r.rescheduled_to_id || null,
   rescheduledFromId: r.rescheduled_from_id || null,
   soapFiled: !!r.soap_filed,
+  packageId: r.package_id || null,
+  packageSeq: r.package_seq ?? null,
 })
 export const toVisit = (v) => ({
   patient_id: v.patientId,
@@ -88,6 +90,38 @@ export const toVisit = (v) => ({
   rescheduled_to_id: v.rescheduledToId || null,
   rescheduled_from_id: v.rescheduledFromId || null,
   soap_filed: !!v.soapFiled,
+  package_id: v.packageId || null,
+  package_seq: v.packageSeq ?? null,
+})
+
+// ---- PACKAGES ----
+export const fromPackage = (r) => ({
+  id: r.id,
+  patientId: r.patient_id,
+  patientName: r.patient_name,
+  doctorName: r.doctor_name,
+  title: r.title,
+  totalSessions: r.total_sessions,
+  price: Number(r.price || 0),
+  paymentTerms: r.payment_terms,
+  paymentStatus: r.payment_status || 'Pending',
+  targetCompletion: r.target_completion,
+  mode: r.mode || 'rolling',
+  status: r.status || 'active',
+  createdAt: r.created_at,
+})
+export const toPackage = (p) => ({
+  patient_id: p.patientId,
+  patient_name: p.patientName,
+  doctor_name: p.doctorName,
+  title: p.title,
+  total_sessions: p.totalSessions,
+  price: p.price ?? 0,
+  payment_terms: p.paymentTerms || null,
+  payment_status: p.paymentStatus || 'Pending',
+  target_completion: p.targetCompletion || null,
+  mode: p.mode || 'rolling',
+  status: p.status || 'active',
 })
 
 // ---- NOTES ----
@@ -184,11 +218,15 @@ export const fromConfig = (r) => ({
   defaultFee: Number(r.default_fee),
   defaultPct: Number(r.default_pct),
   currency: r.currency,
+  noShowConsumesSlot: r.no_show_consumes_slot ?? true,
+  packageCreationTiming: r.package_creation_timing || 'post_assessment',
 })
 export const toConfig = (c) => ({
   default_fee: c.defaultFee,
   default_pct: c.defaultPct,
   currency: c.currency,
+  no_show_consumes_slot: c.noShowConsumesSlot ?? true,
+  package_creation_timing: c.packageCreationTiming || 'post_assessment',
 })
 
 // ---- NOTIFICATIONS ----

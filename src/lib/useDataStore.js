@@ -9,6 +9,7 @@ import {
   fromModality, toModality,
   fromFinance, toFinance,
   fromConfig, toConfig,
+  fromPackage, toPackage,
   fromNotif,
 } from './db'
 
@@ -27,7 +28,8 @@ export function useDataStore({ role, me }) {
   const [exerciseLib, setExerciseLib] = useState([])
   const [modalityLib, setModalityLib] = useState([])
   const [finances, setFinances] = useState([])
-  const [config, setConfigState] = useState({ defaultFee: 500, defaultPct: 0.6, currency: 'EGP' })
+  const [packages, setPackages] = useState([])
+  const [config, setConfigState] = useState({ defaultFee: 500, defaultPct: 0.6, currency: 'EGP', noShowConsumesSlot: true, packageCreationTiming: 'post_assessment' })
   const [notifs, setNotifs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -38,7 +40,7 @@ export function useDataStore({ role, me }) {
   const loadAll = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [d, p, v, n, ex, m, f, c, notes_n] = await Promise.all([
+      const [d, p, v, n, ex, m, f, c, notes_n, pk] = await Promise.all([
         supabase.from('doctors').select('*').order('id'),
         supabase.from('patients').select('*').order('id'),
         supabase.from('visits').select('*').order('id'),
@@ -48,6 +50,7 @@ export function useDataStore({ role, me }) {
         supabase.from('finances').select('*').order('id'),
         supabase.from('config').select('*').eq('id', 1).maybeSingle(),
         supabase.from('notifications').select('*').order('ts', { ascending: false }).limit(50),
+        supabase.from('packages').select('*').order('id'),
       ])
       if (d.error) throw d.error
       setDoctors((d.data || []).map(fromDoctor))
@@ -59,6 +62,7 @@ export function useDataStore({ role, me }) {
       setFinances((f.data || []).map(fromFinance))
       if (c.data) setConfigState(fromConfig(c.data))
       setNotifs((notes_n.data || []).map(fromNotif))
+      setPackages((pk.data || []).map(fromPackage))
     } catch (e) {
       console.error('[useDataStore] load failed', e)
       setError(e.message || String(e))
@@ -81,6 +85,9 @@ export function useDataStore({ role, me }) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, () => {
         supabase.from('visits').select('*').order('id').then(({ data }) => setVisits((data || []).map(fromVisit)))
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' }, () => {
+        supabase.from('packages').select('*').order('id').then(({ data }) => setPackages((data || []).map(fromPackage)))
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
@@ -178,6 +185,18 @@ export function useDataStore({ role, me }) {
   }, [patients, visits, changeStatus, notify])
 
   const submitNote = useCallback(async (n) => {
+    // Package chronological lock: cannot document a session until every
+    // earlier-dated session in the same package has its SOAP filed (§4.3).
+    const thisVisit = visits.find((v) => v.id === n.visitId)
+    if (thisVisit?.packageId && thisVisit.date) {
+      const earlierOpen = visits.some((v) =>
+        v.packageId === thisVisit.packageId && v.id !== thisVisit.id &&
+        v.date && v.date < thisVisit.date && !v.soapFiled && v.status !== 'cancelled')
+      if (earlierOpen) {
+        notify('doctor', 'Complete the earlier session in this package first', n.doctorName)
+        return
+      }
+    }
     const today = new Date().toISOString().slice(0, 10)
     const noteRow = { ...n, state: 'submitted', date: today }
     const { data: noteData, error: noteErr } = await supabase.from('notes').insert(toNote(noteRow)).select().single()
@@ -327,15 +346,111 @@ export function useDataStore({ role, me }) {
     }
   }, [])
 
+  // ---- PACKAGE MUTATIONS ----
+  // Creates the package row, then N child session slots (visits). For
+  // pre-scheduled packages, `dates[i]` seeds each slot's date; rolling
+  // packages leave dates empty (added later via assignSessionDate).
+  const addPackage = useCallback(async (pkg, dates = []) => {
+    const pt = patients.find((p) => p.id === pkg.patientId)
+    const row = { ...pkg, patientName: pt?.name || pkg.patientName || '' }
+    const { data: pdata, error: perr } = await supabase.from('packages').insert(toPackage(row)).select().single()
+    if (perr) { console.error('addPackage', perr); return null }
+    const pack = fromPackage(pdata)
+    setPackages((ps) => [...ps, pack])
+
+    const n = Math.max(1, pkg.totalSessions || 1)
+    const slots = Array.from({ length: n }, (_, i) => ({
+      patient_id: pack.patientId,
+      doctor_name: pack.doctorName,
+      type: i === 0 ? 'Assessment' : 'Treatment',
+      time: '—',
+      date: dates[i] || null,
+      status: 'scheduled',
+      package_id: pack.id,
+      package_seq: i + 1,
+    }))
+    const { data: vdata } = await supabase.from('visits').insert(slots).select()
+    if (vdata) setVisits((vs) => [...vs, ...vdata.map(fromVisit)])
+    notify('admin', `Package created: ${pack.title || 'plan'} for ${pack.patientName} — ${n} sessions`)
+    if (pack.doctorName) notify('doctor', `New treatment package assigned: ${pack.patientName} — ${pack.title || 'plan'} (${n} sessions)`, pack.doctorName)
+    return pack
+  }, [patients, notify])
+
+  const assignSessionDate = useCallback(async (vid, date) => {
+    setVisits((vs) => vs.map((v) => v.id === vid ? { ...v, date } : v))
+    await supabase.from('visits').update({ date }).eq('id', vid)
+  }, [])
+
+  const addPackageSlot = useCallback(async (packageId) => {
+    const pack = packages.find((p) => p.id === packageId)
+    if (!pack) return
+    const seq = visits.filter((v) => v.packageId === packageId).length + 1
+    const { data } = await supabase.from('visits').insert({
+      patient_id: pack.patientId, doctor_name: pack.doctorName, type: 'Treatment',
+      time: '—', date: null, status: 'scheduled', package_id: packageId, package_seq: seq,
+    }).select().single()
+    if (data) setVisits((vs) => [...vs, fromVisit(data)])
+    await supabase.from('packages').update({ total_sessions: (pack.totalSessions || 0) + 1 }).eq('id', packageId)
+    setPackages((ps) => ps.map((p) => p.id === packageId ? { ...p, totalSessions: (p.totalSessions || 0) + 1 } : p))
+    notify('admin', `Slot added to ${pack.title || 'package'} (${pack.patientName})`)
+  }, [packages, visits, notify])
+
+  const removePackageSlot = useCallback(async (vid, reason) => {
+    const v = visits.find((x) => x.id === vid)
+    if (!v) return
+    if (v.soapFiled) { notify('admin', 'Cannot remove a documented session'); return }
+    setVisits((vs) => vs.filter((x) => x.id !== vid))
+    await supabase.from('visits').delete().eq('id', vid)
+    if (v.packageId) {
+      const pack = packages.find((p) => p.id === v.packageId)
+      if (pack) {
+        await supabase.from('packages').update({ total_sessions: Math.max(0, (pack.totalSessions || 1) - 1) }).eq('id', v.packageId)
+        setPackages((ps) => ps.map((p) => p.id === v.packageId ? { ...p, totalSessions: Math.max(0, (p.totalSessions || 1) - 1) } : p))
+        notify('admin', `Slot removed from ${pack.title || 'package'}${reason ? ` — ${reason}` : ''}`)
+      }
+    }
+  }, [visits, packages, notify])
+
+  const reassignPackageDoctor = useCallback(async (packageId, name) => {
+    setPackages((ps) => ps.map((p) => p.id === packageId ? { ...p, doctorName: name } : p))
+    await supabase.from('packages').update({ doctor_name: name }).eq('id', packageId)
+    // move not-yet-documented sessions to the new doctor; completed ones stay attributed
+    const open = visits.filter((v) => v.packageId === packageId && !v.soapFiled)
+    for (const v of open) {
+      await supabase.from('visits').update({ doctor_name: name }).eq('id', v.id)
+    }
+    setVisits((vs) => vs.map((v) => v.packageId === packageId && !v.soapFiled ? { ...v, doctorName: name } : v))
+    notify('admin', `Package reassigned to ${name}`)
+    if (name) notify('doctor', `A treatment package was reassigned to you`, name)
+  }, [visits, notify])
+
+  const updatePackage = useCallback(async (packageId, patch) => {
+    setPackages((ps) => ps.map((p) => p.id === packageId ? { ...p, ...patch } : p))
+    const pack = packages.find((p) => p.id === packageId)
+    await supabase.from('packages').update(toPackage({ ...pack, ...patch })).eq('id', packageId)
+  }, [packages])
+
+  const endPackage = useCallback(async (packageId, reason) => {
+    setPackages((ps) => ps.map((p) => p.id === packageId ? { ...p, status: 'ended' } : p))
+    await supabase.from('packages').update({ status: 'ended' }).eq('id', packageId)
+    // archive remaining undocumented slots
+    const open = visits.filter((v) => v.packageId === packageId && !v.soapFiled && v.status !== 'completed')
+    for (const v of open) await supabase.from('visits').update({ status: 'cancelled', cancelled_by: 'admin' }).eq('id', v.id)
+    setVisits((vs) => vs.map((v) => v.packageId === packageId && !v.soapFiled && v.status !== 'completed' ? { ...v, status: 'cancelled', cancelledBy: 'admin' } : v))
+    const pack = packages.find((p) => p.id === packageId)
+    notify('admin', `Package ended${pack ? `: ${pack.patientName}` : ''}${reason ? ` — ${reason}` : ''} — payment reconciliation due`)
+  }, [visits, packages, notify])
+
   return {
     // data
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, config, notifs,
+    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, config, notifs, packages,
     loading, error,
     // mutations
     addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, updateVisitStatus, updateConfig,
+    addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     setExerciseLib: setExerciseLibPersisted,
     setModalityLib: setModalityLibPersisted,
     notify, markRead,

@@ -3,7 +3,8 @@ import {
   LayoutGrid, Users, ClipboardCheck, Stethoscope, BookOpen, Plus, Search, X, Check,
   ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Pencil, Paperclip, Link2,
   CircleCheck, AlertTriangle, MessageSquare, CornerUpLeft, Trash2, Activity, Wallet,
-  FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal
+  FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
+  Layers, Lock, CalendarDays
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
@@ -705,6 +706,27 @@ const NOTE_STATE_LABEL={draft:"Draft",submitted:"Submitted",under_review:"Under 
 
 const nowISO=()=>new Date().toISOString();
 
+/* ---------- package helpers (treatment plans, §4) ---------- */
+// All session slots that belong to a package.
+const pkgVisitsOf=(packageId,visits)=>visits.filter(v=>v.packageId===packageId);
+// Dated, non-cancelled sessions sorted chronologically by actual session date.
+const pkgDatedSorted=(pkgVisits)=>pkgVisits.filter(v=>v.date&&v.status!=="cancelled").sort((a,b)=>(a.date<b.date?-1:a.date>b.date?1:(a.packageSeq||0)-(b.packageSeq||0)));
+// A dated session is fillable only if every earlier-dated session is documented (§4.3 chronological lock).
+const pkgFillable=(visit,pkgVisits)=>{
+  if(!visit.date||visit.status==="cancelled")return false;
+  const earlier=pkgVisits.filter(v=>v.id!==visit.id&&v.date&&v.status!=="cancelled"&&(v.date<visit.date||(v.date===visit.date&&(v.packageSeq||0)<(visit.packageSeq||0))));
+  return earlier.every(v=>v.soapFiled);
+};
+// Position of a dated session within the chronological order (1-based) — for "Session 3 of 10".
+const pkgOrdinal=(visit,pkgVisits)=>{const s=pkgDatedSorted(pkgVisits);const i=s.findIndex(v=>v.id===visit.id);return i<0?null:i+1;};
+const pkgProgress=(pack,visits)=>{const vs=pkgVisitsOf(pack.id,visits);return{
+  total:pack.totalSessions||vs.length,
+  completed:vs.filter(v=>v.soapFiled).length,
+  scheduled:vs.filter(v=>v.date&&!v.soapFiled&&v.status!=="cancelled").length,
+  unscheduled:vs.filter(v=>!v.date&&v.status!=="cancelled").length,
+  next:pkgDatedSorted(vs).find(v=>!v.soapFiled)?.date||null,
+};};
+
 /* ---------- shared diagnosis picker ---------- */
 function DxSheet({open,onClose,onPick}){
   const[q,setQ]=useState(""),[ch,setCh]=useState("All");
@@ -874,11 +896,12 @@ function AppWithData({ role, me, onSignOut }){
   if (store.error) return <FullScreenError msg={`Database error: ${store.error}. Check that the schema.sql has been run.`} onSignOut={onSignOut} />;
 
   const {
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, config, notifs,
+    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, config, notifs, packages,
     addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, updateVisitStatus, updateConfig,
+    addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     setExerciseLib, setModalityLib, markRead,
   } = store;
   const pending = notes.filter(n=>n.state==="submitted").length;
@@ -890,8 +913,8 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,notifs,markRead}}/>
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
 }
@@ -1041,11 +1064,11 @@ function _LegacyMockApp(){
 }
 
 /* =============================== ADMIN =============================== */
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,notifs,markRead}){
-  const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,notifs,markRead}){
+  const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
-  const tabs=[["today","Today",LayoutGrid],["patients","Patients",Users],["review","Review",ClipboardCheck],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
+  const tabs=[["today","Today",LayoutGrid],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
   const statusMix=STATUSES.map(s=>({name:STATUS_LABEL[s],key:s,v:patients.filter(p=>p.status===s).length})).filter(x=>x.v);
   const byDoctorVisits=doctors.map(d=>({name:(d.name.split(" ")[1]||d.name),v:visits.filter(v=>v.doctorName===d.name).length}));
   const docNames=doctors.map(d=>d.name);
@@ -1135,6 +1158,37 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
         <p className="text-[11px] px-5 py-2.5" style={{color:C.grey,borderTop:`1px solid ${C.line}`}}><Wallet size={11} className="inline mr-1"/>Payment column is admin-only — doctors never see it.</p>
       </div></>}
 
+      {/* PACKAGES — treatment plans (§4) */}
+      {tab==="packages"&&<>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-[13px]" style={{color:C.grey}}>Treatment plans group sessions under a parent plan. Dates can be set in any order; notes must be filled in date order.</p>
+          <button onClick={()=>setNewPkg(true)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white font-semibold text-[14px] shrink-0" style={{background:C.ink}}><Plus size={16}/>New package</button>
+        </div>
+        {packages.length===0&&<div className="bg-white rounded-2xl px-5 py-8 text-center text-[13px]" style={{border:`1px solid ${C.line}`,color:C.grey}}>No packages yet. Create one to bundle a patient's sessions into a plan.</div>}
+        <div className="space-y-3">
+          {packages.map(pk=>{const pr=pkgProgress(pk,visits);return(
+            <div key={pk.id} className="bg-white rounded-2xl p-5" style={{border:`1px solid ${pk.status==="ended"?C.line:C.tealSoft}`,opacity:pk.status==="ended"?0.7:1}}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="font-bold text-[16px] flex items-center gap-2" style={{fontFamily:"Georgia,serif",color:C.ink}}>{pk.title||"Treatment plan"}
+                    {pk.status==="ended"&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:C.grey+"22",color:C.grey}}>ENDED</span>}
+                    {pk.mode==="prescheduled"&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:"#EAF6F7",color:"#2E6E73"}}>pre-scheduled</span>}</div>
+                  <div className="text-[12.5px] mt-0.5" style={{color:C.grey}}>{pk.patientName} · {pk.doctorName||"no doctor"}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] font-semibold flex items-center gap-1" style={{color:pk.paymentStatus==="Paid"?C.green:C.amber}}><Wallet size={13}/>{pk.paymentStatus}{pk.price?` · ${pk.price} ${config.currency||"EGP"}`:""}</span>
+                  {pk.status!=="ended"&&<button onClick={()=>setManagePkg(pk.id)} className="text-[12px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Manage</button>}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-3 mt-4">
+                {[["Completed",`${pr.completed}/${pr.total}`,C.green],["Scheduled",pr.scheduled,C.teal],["Unscheduled",pr.unscheduled,C.amber],["Next session",pr.next||"—",C.ink]].map(([l,v,c])=>(
+                  <div key={l} className="rounded-xl px-3 py-2.5" style={{background:C.bg}}><div className="text-[11px]" style={{color:C.grey}}>{l}</div><div className="text-[15px] font-bold tabular-nums" style={{color:c}}>{v}</div></div>))}
+              </div>
+              <div className="mt-3 h-2 rounded-full overflow-hidden" style={{background:C.line}}><div className="h-full rounded-full" style={{width:`${pr.total?Math.round(pr.completed/pr.total*100):0}%`,background:C.teal}}/></div>
+            </div>);})}
+        </div>
+      </>}
+
       {/* REVIEW */}
       {tab==="review"&&<div className="flex gap-5">
         <div className="w-[280px] space-y-2">
@@ -1168,7 +1222,99 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc)=>{addPatient(p,b,d,doc);setIntake(false);}}/>}
     {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles}/>}
+    {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
+    {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
   </div>);
+}
+
+/* ---------- New package (treatment plan) ---------- */
+function NewPackage({patients,doctors,config,onClose,onSave}){
+  const[f,setF]=useState({patientId:"",doctorName:"",title:"",totalSessions:6,price:"",paymentTerms:"",paymentStatus:"Pending",targetCompletion:"",mode:"rolling"});
+  const set=k=>v=>setF(s=>({...s,[k]:v}));
+  const[dates,setDates]=useState([]);
+  const n=Math.max(1,Number(f.totalSessions)||1);
+  const valid=f.patientId&&f.doctorName&&f.title&&n>=1;
+  const save=()=>{const pkg={...f,patientId:Number(f.patientId),totalSessions:n,price:f.price===""?0:Number(f.price)};
+    onSave(pkg,f.mode==="prescheduled"?dates:[]);};
+  return(<div className="absolute inset-0 z-40 flex items-center justify-center p-5" style={{background:"rgba(30,42,58,0.5)"}}>
+    <div className="relative w-full max-w-[480px] rounded-3xl overflow-hidden" style={{background:C.bg}}>
+      <div className="px-5 py-4 flex items-center justify-between" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
+        <h2 className="text-[18px] font-bold" style={{fontFamily:"Georgia,serif"}}>New treatment package</h2>
+        <button onClick={onClose}><X size={20} color={C.grey}/></button></div>
+      <div className="p-5 max-h-[70vh] overflow-y-auto space-y-3">
+        <Field label="Patient"><select value={f.patientId} onChange={e=>set("patientId")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:f.patientId?C.ink:C.grey}}><option value="">Select patient…</option>{patients.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
+        <Field label="Assigned doctor"><select value={f.doctorName} onChange={e=>set("doctorName")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:f.doctorName?C.ink:C.grey}}><option value="">Select doctor…</option>{doctors.map(d=><option key={d.id}>{d.name}</option>)}</select></Field>
+        <Field label="Plan title"><input value={f.title} onChange={e=>set("title")(e.target.value)} placeholder="e.g. Lower back rehab" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Total sessions"><input type="number" min="1" max="60" value={f.totalSessions} onChange={e=>set("totalSessions")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+          <Field label={`Price (${config.currency||"EGP"})`} optional><input type="number" min="0" value={f.price} onChange={e=>set("price")(e.target.value)} placeholder="total or per session" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Payment terms" optional><input value={f.paymentTerms} onChange={e=>set("paymentTerms")(e.target.value)} placeholder="e.g. upfront / per visit" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+          <Field label="Target completion" optional><input type="date" value={f.targetCompletion} onChange={e=>set("targetCompletion")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:f.targetCompletion?C.ink:C.grey}}/></Field>
+        </div>
+        <div>
+          <span className="text-[12px] font-semibold" style={{color:C.ink2}}>Scheduling mode</span>
+          <div className="grid grid-cols-2 gap-3 mt-1">
+            {[["rolling","Rolling","Add dates as treatment progresses"],["prescheduled","Pre-scheduled","Book all dates now"]].map(([k,l,d])=>(
+              <button key={k} onClick={()=>set("mode")(k)} className="p-3 rounded-xl text-left" style={{background:f.mode===k?"#F4FBFC":"#fff",border:`1.5px solid ${f.mode===k?C.teal:C.line}`}}>
+                <div className="font-bold text-[14px]">{l}</div><div className="text-[11px]" style={{color:C.grey}}>{d}</div></button>))}
+          </div>
+        </div>
+        {f.mode==="prescheduled"&&<div className="space-y-2">
+          <span className="text-[12px] font-semibold" style={{color:C.ink2}}>Session dates (any can be left blank for now)</span>
+          {Array.from({length:n}).map((_,i)=>(<div key={i} className="flex items-center gap-2"><span className="text-[12px] w-16" style={{color:C.grey}}>Session {i+1}</span>
+            <input type="date" value={dates[i]||""} onChange={e=>setDates(d=>{const c=[...d];c[i]=e.target.value;return c;})} className={inp} style={{border:`1px solid ${C.line}`}}/></div>))}
+        </div>}
+        <button disabled={!valid} onClick={save} className="w-full py-3.5 rounded-xl font-semibold text-white disabled:opacity-40" style={{background:C.ink}}>Create package · {n} session{n>1?"s":""}</button>
+      </div>
+    </div></div>);
+}
+
+/* ---------- Manage package (admin) ---------- */
+function PackageManage({pkg,visits,doctors,config,nameOf,onClose,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}){
+  const[bulkStart,setBulkStart]=useState("");const[bulkEvery,setBulkEvery]=useState(7);
+  if(!pkg)return null;
+  const pv=pkgVisitsOf(pkg.id,visits).slice().sort((a,b)=>(a.packageSeq||0)-(b.packageSeq||0));
+  const undated=pv.filter(v=>!v.date&&v.status!=="cancelled");
+  const bulkSchedule=()=>{if(!bulkStart)return;let d=new Date(bulkStart);undated.forEach(v=>{assignSessionDate(v.id,d.toISOString().slice(0,10));d=new Date(d.getTime()+Number(bulkEvery||7)*86400000);});};
+  return(<div className="absolute inset-0 z-40 flex items-center justify-center p-5" style={{background:"rgba(30,42,58,0.5)"}}>
+    <div className="relative w-full max-w-[560px] rounded-3xl overflow-hidden" style={{background:C.bg}}>
+      <div className="px-5 py-4 flex items-center justify-between" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
+        <div><h2 className="text-[18px] font-bold" style={{fontFamily:"Georgia,serif"}}>{pkg.title}</h2>
+          <div className="text-[12px]" style={{color:C.grey}}>{pkg.patientName} · {pkg.doctorName||"no doctor"}</div></div>
+        <button onClick={onClose}><X size={20} color={C.grey}/></button></div>
+      <div className="p-5 max-h-[72vh] overflow-y-auto space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Reassign doctor"><select value={pkg.doctorName||""} onChange={e=>reassignPackageDoctor(pkg.id,e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}><option value="">—</option>{doctors.map(d=><option key={d.id}>{d.name}</option>)}</select></Field>
+          <Field label="Payment status"><select value={pkg.paymentStatus} onChange={e=>updatePackage(pkg.id,{paymentStatus:e.target.value})} className={inp} style={{border:`1px solid ${C.line}`}}>{PAY_STATUS.map(s=><option key={s}>{s}</option>)}</select></Field>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-2"><span className="text-[13px] font-bold">Sessions</span>
+            <button onClick={()=>addPackageSlot(pkg.id)} className="text-[12px] font-semibold flex items-center gap-1 px-2.5 py-1 rounded-lg" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}><Plus size={13}/>Add slot</button></div>
+          <div className="space-y-1.5">
+            {pv.map(v=>{const ord=pkgOrdinal(v,pv);const fillable=pkgFillable(v,pv);return(
+              <div key={v.id} className="flex items-center gap-2 bg-white rounded-xl px-3 py-2.5" style={{border:`1px solid ${C.line}`}}>
+                <span className="text-[12px] font-bold w-20 shrink-0" style={{color:C.ink}}>Slot {v.packageSeq}{ord?` · #${ord}`:""}</span>
+                <input type="date" value={v.date||""} disabled={v.soapFiled} onChange={e=>assignSessionDate(v.id,e.target.value)} className="flex-1 px-2 py-1.5 rounded-lg text-[13px] bg-white" style={{border:`1px solid ${C.line}`,opacity:v.soapFiled?0.6:1}}/>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{background:visitStatusColor[v.status]+"22",color:visitStatusColor[v.status]}}>{v.soapFiled?"documented":v.date?(fillable?"in turn":"locked"):"undated"}</span>
+                {!v.soapFiled&&<button onClick={()=>removePackageSlot(v.id,"admin removed")} title="Remove slot"><Trash2 size={15} color={C.grey}/></button>}
+              </div>);})}
+          </div>
+        </div>
+        {undated.length>0&&<div className="bg-white rounded-xl p-3" style={{border:`1px dashed ${C.tealSoft}`}}>
+          <div className="text-[12px] font-semibold mb-2">Bulk-schedule {undated.length} undated slot{undated.length>1?"s":""}</div>
+          <div className="flex items-center gap-2">
+            <input type="date" value={bulkStart} onChange={e=>setBulkStart(e.target.value)} className="px-2 py-1.5 rounded-lg text-[13px] bg-white" style={{border:`1px solid ${C.line}`}}/>
+            <span className="text-[12px]" style={{color:C.grey}}>every</span>
+            <input type="number" min="1" value={bulkEvery} onChange={e=>setBulkEvery(e.target.value)} className="w-16 px-2 py-1.5 rounded-lg text-[13px] bg-white" style={{border:`1px solid ${C.line}`}}/>
+            <span className="text-[12px]" style={{color:C.grey}}>days</span>
+            <button disabled={!bulkStart} onClick={bulkSchedule} className="ml-auto text-[12px] font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{background:C.ink}}>Apply</button>
+          </div>
+        </div>}
+        <button onClick={()=>{if(confirm("End this package? Remaining undocumented slots will be archived."))endPackage(pkg.id);onClose();}} className="w-full py-2.5 rounded-xl font-semibold text-[13px]" style={{background:"#FDF3F1",color:C.red,border:`1px solid ${C.red}44`}}>End package &amp; reconcile payment</button>
+      </div>
+    </div></div>);
 }
 
 function NoteReview({note,onAction}){
@@ -1616,6 +1762,24 @@ function SettingsTab({config,updateConfig}){
       </div>
     </div>
     <div className="bg-white rounded-2xl p-6 mt-4" style={{border:`1px solid ${C.line}`}}>
+      <h3 className="font-bold text-[16px] mb-1" style={{fontFamily:"Georgia,serif"}}>Treatment packages</h3>
+      <p className="text-[12px] mb-4" style={{color:C.grey}}>Clinic-wide rules that apply to every package, not per session.</p>
+      <div className="flex items-start justify-between gap-4 py-3" style={{borderTop:`1px solid ${C.line}`}}>
+        <div><div className="text-[14px] font-semibold" style={{color:C.ink}}>No-show consumes a session</div>
+          <div className="text-[12px] mt-0.5" style={{color:C.grey}}>{config.noShowConsumesSlot?"On — a no-show counts against the package (billable). Cancellations with notice roll forward.":"Off — no-shows roll forward like cancellations and don't consume a slot."}</div></div>
+        <button onClick={()=>updateConfig({noShowConsumesSlot:!config.noShowConsumesSlot})} className="shrink-0 w-12 h-7 rounded-full relative transition-colors" style={{background:config.noShowConsumesSlot?C.teal:C.line}}>
+          <span className="absolute top-1 w-5 h-5 rounded-full bg-white transition-all" style={{left:config.noShowConsumesSlot?"26px":"4px"}}/></button>
+      </div>
+      <div className="flex items-start justify-between gap-4 py-3" style={{borderTop:`1px solid ${C.line}`}}>
+        <div><div className="text-[14px] font-semibold" style={{color:C.ink}}>Package creation timing</div>
+          <div className="text-[12px] mt-0.5" style={{color:C.grey}}>When the admin typically creates a plan.</div></div>
+        <select value={config.packageCreationTiming} onChange={e=>updateConfig({packageCreationTiming:e.target.value})} className="shrink-0 px-3 py-2 rounded-lg text-[13px] bg-white" style={{border:`1px solid ${C.line}`,color:C.ink}}>
+          <option value="post_assessment">After initial assessment</option>
+          <option value="during_intake">During patient intake</option>
+        </select>
+      </div>
+    </div>
+    <div className="bg-white rounded-2xl p-6 mt-4" style={{border:`1px solid ${C.line}`}}>
       <h3 className="font-bold text-[15px] mb-1" style={{fontFamily:"Georgia,serif"}}>Admin team</h3>
       <p className="text-[12px] mb-3" style={{color:C.grey}}>Accounts with full system access. Auth + RLS handled in the Supabase wiring layer — this is the source of truth for who's listed.</p>
       <div className="space-y-2">{[
@@ -1693,9 +1857,11 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
 }
 
 /* =============================== DOCTOR =============================== */
-function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}){
+function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}){
   const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);
-  const mine=visits.filter(v=>v.doctorName===me&&v.status!=="completed");
+  const mine=visits.filter(v=>v.doctorName===me&&v.status!=="completed"&&!v.packageId);
+  const myPackages=(packages||[]).filter(pk=>pk.doctorName===me&&pk.status!=="ended");
+  const pkgById=id=>(packages||[]).find(pk=>pk.id===id);
   const myPatients=patients.filter(p=>p.doctor===me);
   const meDoc=doctors?.find(d=>d.name===me);
   const mySlots=meDoc?.slots||[];
@@ -1719,11 +1885,32 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,submit
         {tab==="visits"&&<button onClick={()=>setPicker(true)} className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-[14px]" style={{background:"#fff",color:C.ink}}><Plus size={16}/>Log a session</button>}
       </div>
 
-      {tab==="visits"&&<div className="p-4">{mine.length===0&&<p className="text-[13px] text-center mt-6" style={{color:C.grey}}>No upcoming visits — tap “Log a session” to log one independently.</p>}
+      {tab==="visits"&&<div className="p-4">{mine.length===0&&myPackages.length===0&&<p className="text-[13px] text-center mt-6" style={{color:C.grey}}>No upcoming visits — tap “Log a session” to log one independently.</p>}
         {mine.map(v=>{const p=pOf(v.patientId);return(<button key={v.id} onClick={()=>setActive({visit:v,patient:p})} className="w-full bg-white rounded-2xl p-4 mb-3 text-left" style={{border:`1px solid ${C.line}`}}>
           <div className="flex items-center gap-2"><Clock size={14} color={C.teal}/><span className="font-bold">{v.date||v.time}</span><span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:v.type==="Assessment"?C.teal+"33":"#F0F0EE",color:C.ink2}}>{v.type}</span></div>
           <div className="text-[17px] font-bold mt-1.5" style={{fontFamily:"Georgia,serif",color:C.ink}}>{p?.name}</div>
-          <div className="text-[13px] flex items-center gap-1.5 mt-0.5" style={{color:C.grey}}><MapPin size={13}/>{p?.zone} · {p?.dx?.label||"no dx yet"}</div></button>);})}</div>}
+          <div className="text-[13px] flex items-center gap-1.5 mt-0.5" style={{color:C.grey}}><MapPin size={13}/>{p?.zone} · {p?.dx?.label||"no dx yet"}</div></button>);})}
+
+        {myPackages.map(pk=>{const pv=pkgVisitsOf(pk.id,visits);const dated=pkgDatedSorted(pv).filter(v=>!v.soapFiled);const undated=pv.filter(v=>!v.date&&v.status!=="cancelled");const total=pk.totalSessions||pv.length;return(
+          <div key={pk.id} className="mb-4">
+            <div className="flex items-center gap-1.5 mb-2 mt-1"><Layers size={14} color={C.teal}/><span className="text-[12px] font-bold uppercase tracking-wider" style={{color:C.ink2}}>{pk.title} · {pk.patientName}</span></div>
+            {dated.map(v=>{const p=pOf(v.patientId);const ord=pkgOrdinal(v,pv);const fillable=pkgFillable(v,pv);const blockerOrd=fillable?null:(ord?ord-1:null);return(
+              <button key={v.id} disabled={!fillable} onClick={()=>fillable&&setActive({visit:v,patient:p})} className="w-full bg-white rounded-2xl p-4 mb-2 text-left disabled:cursor-not-allowed" style={{border:`1px solid ${fillable?C.line:C.line}`,opacity:fillable?1:0.65}}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2"><Clock size={14} color={fillable?C.teal:C.grey}/><span className="font-bold">{v.date}</span></div>
+                  {fillable?<span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:C.teal+"22",color:"#2E6E73"}}>Fill session notes</span>
+                    :<span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1" style={{background:C.line,color:C.grey}}><Lock size={11}/>locked</span>}
+                </div>
+                <div className="text-[16px] font-bold mt-1.5" style={{fontFamily:"Georgia,serif",color:C.ink}}>{p?.name} — Session {ord} of {total}</div>
+                <div className="text-[12.5px] mt-0.5" style={{color:C.grey}}>{pk.title}{!fillable&&blockerOrd?` · complete Session ${blockerOrd} notes first`:""}</div>
+              </button>);})}
+            {undated.length>0&&<div className="bg-white rounded-2xl p-3 mb-2" style={{border:`1px dashed ${C.tealSoft}`}}>
+              <div className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{color:C.grey}}>Pending dates · {undated.length} slot{undated.length>1?"s":""}</div>
+              {undated.map(v=>(<div key={v.id} className="flex items-center gap-2 mb-1.5 last:mb-0"><span className="text-[12px] w-16 shrink-0" style={{color:C.ink2}}>Slot {v.packageSeq}</span>
+                <input type="date" value="" onChange={e=>e.target.value&&assignSessionDate(v.id,e.target.value)} className="flex-1 px-2 py-1.5 rounded-lg text-[13px] bg-white" style={{border:`1px solid ${C.line}`}}/></div>))}
+            </div>}
+          </div>);})}
+      </div>}
 
       {tab==="patients"&&<div className="p-4">{myPatients.length===0&&<p className="text-[13px] text-center mt-6" style={{color:C.grey}}>No patients assigned to you yet.</p>}
         {myPatients.map(p=>{const h=notes.filter(n=>n.patientId===p.id);const last=h.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")).slice(-1)[0];return(
