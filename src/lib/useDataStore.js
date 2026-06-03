@@ -200,7 +200,7 @@ export function useDataStore({ role, me }) {
 
   // Calendly-style booking: drops a scheduled visit at a specific date/time.
   // If `newPatient` is supplied (no patientId), creates the patient first.
-  const bookSession = useCallback(async ({ patientId, newPatient, doctorName, date, time, durationMin = 45, type = 'Treatment', booker = 'admin', bookedBy = 'patient', relativeName = null, relativeRelation = null }) => {
+  const bookSession = useCallback(async ({ patientId, newPatient, doctorName, date, time, durationMin = 45, type = 'Treatment', booker = 'admin', bookedBy = 'patient', relativeName = null, relativeRelation = null, count = 1 }) => {
     let pid = patientId
     let pname
     if (!pid && newPatient && newPatient.name) {
@@ -220,12 +220,20 @@ export function useDataStore({ role, me }) {
       pname = patients.find((p) => p.id === pid)?.name || '—'
     }
     if (!pid) return
-    const v = { patient_id: pid, doctor_name: doctorName, type, time: time || '—', date: date || null, duration_min: durationMin, status: 'scheduled', booked_by: bookedBy || 'patient', relative_name: bookedBy === 'relative' ? (relativeName || null) : null, relative_relation: bookedBy === 'relative' ? (relativeRelation || null) : null }
-    const { data: vd, error: verr } = await supabase.from('visits').insert(v).select().single()
+    const n = Math.max(1, Math.min(60, Number(count) || 1))
+    const base = { patient_id: pid, doctor_name: doctorName, type, time: time || '—', date: date || null, duration_min: durationMin, status: 'scheduled', booked_by: bookedBy || 'patient', relative_name: bookedBy === 'relative' ? (relativeName || null) : null, relative_relation: bookedBy === 'relative' ? (relativeRelation || null) : null }
+    // Only the first session keeps a precise date when bulk-creating; the rest are left undated to schedule later.
+    const rows = Array.from({ length: n }, (_, i) => (i === 0 ? base : { ...base, date: null, time: '—' }))
+    const { data: vd, error: verr } = await supabase.from('visits').insert(rows).select()
     if (verr) { console.error('bookSession visit', verr); return }
-    setVisits((vs) => [...vs, fromVisit(vd)])
-    notify('admin', `Session booked: ${pname} → ${doctorName || '—'} (${date || '—'} ${time || ''})`)
-    if (doctorName && booker !== 'doctor') notify('doctor', `New session booked: ${pname} (${date || '—'} ${time || ''})`, doctorName)
+    setVisits((vs) => [...vs, ...(vd || []).map(fromVisit)])
+    if (n > 1) {
+      notify('admin', `${n} sessions booked: ${pname} → ${doctorName || '—'}${date ? ` (1st on ${date})` : ' (dates open)'}`)
+      if (doctorName && booker !== 'doctor') notify('doctor', `${n} sessions booked: ${pname}`, doctorName)
+    } else {
+      notify('admin', `Session booked: ${pname} → ${doctorName || '—'} (${date || '—'} ${time || ''})`)
+      if (doctorName && booker !== 'doctor') notify('doctor', `New session booked: ${pname} (${date || '—'} ${time || ''})`, doctorName)
+    }
   }, [patients, notify])
 
   // Move/resize a visit on the calendar (drag or edit).

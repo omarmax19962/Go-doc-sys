@@ -1273,7 +1273,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     </div>
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc)=>{addPatient(p,b,d,doc);setIntake(false);}}/>}
-    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} doctors={doctors} bookSession={bookSession} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles}/>}
+    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} doctors={doctors} bookSession={bookSession} rescheduleVisit={rescheduleVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles}/>}
     {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
     {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
   </div>);
@@ -1417,15 +1417,18 @@ function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onC
   const[bookedBy,setBookedBy]=useState("patient");
   const[relName,setRelName]=useState("");
   const[relRelation,setRelRelation]=useState("");
+  const[count,setCount]=useState(1);
   const norm=s=>(s||"").toLowerCase();
+  const nSessions=Math.max(1,Math.min(60,Number(count)||1));
+  const bulk=nSessions>1;
   const matches=useMemo(()=>{const t=norm(q);if(t.length<1)return patients.slice(0,6);return patients.filter(p=>norm(p.name).includes(t)||(p.phone||"").includes(q)).slice(0,8);},[q,patients]);
   // First-time patients (no prior non-cancelled visits) → this is their "1st session", default to Assessment.
   const priorVisits=useMemo(()=>{const pid=fixedPatient?.id??picked?.id;if(pmode==="new"||!pid)return 0;return(visits||[]).filter(v=>v.patientId===pid&&v.status!=="cancelled").length;},[visits,picked,pmode,fixedPatient]);
   const isFirst=pmode==="new"||priorVisits===0;
   const type=typeManual??(isFirst?"Assessment":"Treatment");
-  const valid=(pmode==="existing"?!!picked:!!np.name.trim())&&!!doctor&&!!date&&!!time&&(bookedBy!=="relative"||!!relName.trim());
+  const valid=(pmode==="existing"?!!picked:!!np.name.trim())&&!!doctor&&(bookedBy!=="relative"||!!relName.trim());
   const submit=()=>{if(!valid)return;
-    onBook({patientId:pmode==="existing"?picked.id:undefined,newPatient:pmode==="new"?np:undefined,doctorName:doctor,date,time,durationMin:duration,type,bookedBy,relativeName:bookedBy==="relative"?relName.trim():null,relativeRelation:bookedBy==="relative"?relRelation:null});
+    onBook({patientId:pmode==="existing"?picked.id:undefined,newPatient:pmode==="new"?np:undefined,doctorName:doctor,date:date||null,time:time||null,durationMin:duration,type,bookedBy,relativeName:bookedBy==="relative"?relName.trim():null,relativeRelation:bookedBy==="relative"?relRelation:null,count:nSessions});
     onClose();};
   return(<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.5)"}} onClick={onClose}>
     <div className="w-full max-w-[440px] rounded-3xl overflow-hidden" style={{background:C.bg}} onClick={e=>e.stopPropagation()}>
@@ -1450,10 +1453,12 @@ function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onC
           <input value={np.complaint} onChange={e=>setNp(s=>({...s,complaint:e.target.value}))} placeholder="Main complaint / condition" className={inp} style={{border:`1px solid ${C.line}`}}/>
           <input value={np.source} onChange={e=>setNp(s=>({...s,source:e.target.value}))} placeholder="Source / campaign (optional)" className={inp} style={{border:`1px solid ${C.line}`}}/>
         </div>}
+        <Field label="Number of sessions"><input type="number" min="1" max="60" value={count} onChange={e=>setCount(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Date"><input type="date" value={date} onChange={e=>setDate(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
-          <Field label="Time"><input type="time" value={time} onChange={e=>setTime(e.target.value)} step="900" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+          <Field label={bulk?"1st session date":"Date"} optional={bulk}><input type="date" value={date} onChange={e=>setDate(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:date?C.ink:C.grey}}/></Field>
+          <Field label="Time" optional={bulk}><input type="time" value={time} onChange={e=>setTime(e.target.value)} step="900" className={inp} style={{border:`1px solid ${C.line}`,color:time?C.ink:C.grey}}/></Field>
         </div>
+        {bulk&&<div className="rounded-lg px-3 py-2 text-[11px]" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`,color:C.ink2}}>Creating <b>{nSessions}</b> sessions. The remaining {nSessions-1} are left without a date — set each date later from the session popover or the patient's profile.</div>}
         <div className="grid grid-cols-2 gap-2">
           <Field label="Duration"><select value={duration} onChange={e=>setDuration(+e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{DURATIONS.map(d=><option key={d} value={d}>{d} min</option>)}</select></Field>
           <Field label="Type"><select value={type} onChange={e=>setTypeManual(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{VISIT_TYPES.map(t=><option key={t} value={t}>{t==="Assessment"&&isFirst?"1st session (Assessment)":VISIT_TYPE_LABEL[t]}</option>)}</select></Field>
@@ -1472,7 +1477,7 @@ function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onC
       </div>
       <div className="px-5 py-4 flex gap-2" style={{background:"#fff",borderTop:`1px solid ${C.line}`}}>
         <button onClick={onClose} className="flex-1 py-2.5 rounded-xl font-semibold text-[14px]" style={{background:C.bg,color:C.ink2,border:`1px solid ${C.line}`}}>Cancel</button>
-        <button onClick={submit} disabled={!valid} className="flex-1 py-2.5 rounded-xl font-bold text-[14px] disabled:opacity-40" style={{background:C.ink,color:"#fff"}}>{isFirst?"Book 1st session":"Book session"}</button>
+        <button onClick={submit} disabled={!valid} className="flex-1 py-2.5 rounded-xl font-bold text-[14px] disabled:opacity-40" style={{background:C.ink,color:"#fff"}}>{bulk?`Book ${nSessions} sessions`:(isFirst?"Book 1st session":"Book session")}</button>
       </div>
     </div>
   </div>);
@@ -2058,7 +2063,19 @@ function PainTrend({data,height=170}){
   </AreaChart></ResponsiveContainer>);
 }
 
-function PatientFile({patient,notes,finances,visits,doctors,bookSession,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,role="admin"}){
+function UpcomingSessionRow({v,rescheduleVisit}){
+  const[d,setD]=useState(v.date||"");const[t,setT]=useState(v.time&&v.time!=="—"?v.time:"");const[saved,setSaved]=useState(false);
+  const dirty=(d||"")!==(v.date||"")||(t||"")!==((v.time&&v.time!=="—")?v.time:"");
+  const save=async()=>{await rescheduleVisit(v.id,{date:d||null,time:t||null});setSaved(true);setTimeout(()=>setSaved(false),1500);};
+  return(<div className="px-5 py-3 flex items-center gap-2 flex-wrap" style={{borderTop:`1px solid ${C.line}`}}>
+    <span className="text-[12px] font-semibold w-20" style={{color:C.ink}}>{VISIT_TYPE_LABEL[v.type]||v.type}</span>
+    <input type="date" value={d} onChange={e=>setD(e.target.value)} className="px-2 py-1.5 rounded-lg text-[12px] outline-none" style={{border:`1px solid ${C.line}`,color:d?C.ink:C.grey}}/>
+    <input type="time" value={t} onChange={e=>setT(e.target.value)} step="900" className="px-2 py-1.5 rounded-lg text-[12px] outline-none" style={{border:`1px solid ${C.line}`,color:t?C.ink:C.grey}}/>
+    {!v.date&&<span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{background:C.amber+"22",color:"#9a6a00"}}>No date</span>}
+    <button disabled={!dirty} onClick={save} className="ml-auto text-[11px] font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{background:saved?C.green:C.ink,color:"#fff"}}>{saved?"Saved ✓":"Set date"}</button>
+  </div>);
+}
+function PatientFile({patient,notes,finances,visits,doctors,bookSession,rescheduleVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,role="admin"}){
   const[confirmDel,setConfirmDel]=useState(false);
   const[booking,setBooking]=useState(false);
   const hist=notes.filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
@@ -2153,6 +2170,11 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,onClose,
 
       {/* ============ SESSIONS (expandable) ============ */}
       {mode==="profile"&&sub==="sessions"&&<div className="p-6">
+        {role==="admin"&&rescheduleVisit&&(()=>{const up=upcoming.filter(v=>v.status!=="cancelled"&&v.status!=="rescheduled").slice().sort((a,b)=>(a.date||"9999").localeCompare(b.date||"9999"));const undated=up.filter(v=>!v.date).length;return up.length>0?(
+          <div className="bg-white rounded-2xl overflow-hidden mb-4" style={{border:`1px solid ${C.line}`}}>
+            <div className="px-5 py-2.5 flex items-center justify-between" style={{background:"#F4F4F2"}}><span className="text-[11px] font-bold uppercase tracking-wider" style={{color:C.grey}}>{up.length} upcoming session{up.length>1?"s":""}{undated>0?` · ${undated} need a date`:""}</span></div>
+            {up.map(v=><UpcomingSessionRow key={v.id} v={v} rescheduleVisit={rescheduleVisit}/>)}
+          </div>):null;})()}
         <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
           <div className="px-5 py-2.5 flex items-center justify-between" style={{background:"#F4F4F2"}}>
             <span className="text-[11px] font-bold uppercase tracking-wider" style={{color:C.grey}}>{hist.length} sessions · tap to expand</span>
