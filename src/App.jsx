@@ -914,7 +914,7 @@ function AppWithData({ role, me, onSignOut }){
 
   const {
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages,
-    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient,
+    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
@@ -931,7 +931,7 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,requestReschedule,bookSession,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1082,7 +1082,7 @@ function _LegacyMockApp(){
 }
 
 /* =============================== ADMIN =============================== */
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
@@ -1096,6 +1096,9 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
   const[pF,setPF]=useState({q:"",status:"",doctor:"",zone:""});
   const[rF,setRF]=useState({doctor:"",type:"",red:""});
   const[hoverP,setHoverP]=useState(null);
+  const[selPts,setSelPts]=useState(()=>new Set());
+  const[confirmBulk,setConfirmBulk]=useState(null); // {ids, label} | null
+  const togglePt=id=>setSelPts(s=>{const n=new Set(s);n.has(id)?n.delete(id):n.add(id);return n;});
   const fVisits=visits.filter(v=>(!tF.doctor||v.doctorName===tF.doctor)&&(!tF.status||v.status===tF.status)&&(!tF.type||v.type===tF.type)&&(!(tF.from||tF.to)||inRange(v.date,tF.from,tF.to)));
   const fPatients=patients.filter(p=>(!pF.q||p.name.toLowerCase().includes(pF.q.toLowerCase()))&&(!pF.status||p.status===pF.status)&&(!pF.doctor||p.doctor===pF.doctor)&&(!pF.zone||p.zone===pF.zone));
   const fQueue=queue.filter(n=>(!rF.doctor||n.doctorName===rF.doctor)&&(!rF.type||n.type===rF.type)&&(!rF.red||n.redFlag));
@@ -1162,9 +1165,26 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
           <Sel value={pF.doctor} onChange={v=>setPF(s=>({...s,doctor:v}))} options={docNames} label="Doctor"/>
           <Sel value={pF.zone} onChange={v=>setPF(s=>({...s,zone:v}))} options={ZONES} label="Zone"/>
         </FilterBar>
+        {/* bulk select / delete bar */}
+        {fPatients.length>0&&<div className="flex items-center gap-3 mb-3 px-4 py-2.5 rounded-xl bg-white" style={{border:`1px solid ${C.line}`}}>
+          <label className="flex items-center gap-2 text-[13px] font-semibold cursor-pointer" style={{color:C.ink}}>
+            <input type="checkbox" checked={fPatients.every(p=>selPts.has(p.id))} ref={el=>{if(el)el.indeterminate=fPatients.some(p=>selPts.has(p.id))&&!fPatients.every(p=>selPts.has(p.id));}}
+              onChange={e=>setSelPts(e.target.checked?new Set(fPatients.map(p=>p.id)):new Set())} className="w-4 h-4 cursor-pointer" style={{accentColor:C.ink}}/>
+            Select all
+          </label>
+          <span className="text-[12px]" style={{color:C.grey}}>{selPts.size>0?`${selPts.size} selected`:`${fPatients.length} shown`}</span>
+          <div className="flex-1"/>
+          {selPts.size>0&&<button onClick={()=>setSelPts(new Set())} className="text-[12px] font-semibold px-3 py-1.5 rounded-lg" style={{color:C.ink2,border:`1px solid ${C.line}`}}>Clear</button>}
+          <button disabled={selPts.size===0} onClick={()=>setConfirmBulk({ids:[...selPts],label:`${selPts.size} selected patient${selPts.size>1?"s":""}`})} className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{background:C.red}}><Trash2 size={13}/>Delete selected</button>
+          <button onClick={()=>setConfirmBulk({ids:fPatients.map(p=>p.id),label:`all ${fPatients.length} patient${fPatients.length>1?"s":""}`})} className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg" style={{color:C.red,border:`1px solid ${C.red}55`}}><Trash2 size={13}/>Delete all</button>
+        </div>}
         <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
         {fPatients.length===0&&<div className="px-5 py-4 text-[13px]" style={{color:C.grey}}>No patients match these filters.</div>}
-        {fPatients.map((p,i)=>(<div key={p.id} onClick={()=>setViewP(p)} onMouseEnter={()=>setHoverP(p.id)} onMouseLeave={()=>setHoverP(null)} role="button" title="Open patient profile" className="px-5 py-4 grid grid-cols-12 gap-3 items-center cursor-pointer" style={{borderTop:i?`1px solid ${C.line}`:"none",background:hoverP===p.id?"#F4FBFC":"#fff",transition:"background .12s"}}>
+        {fPatients.map((p,i)=>(<div key={p.id} onMouseEnter={()=>setHoverP(p.id)} onMouseLeave={()=>setHoverP(null)} className="flex items-center" style={{borderTop:i?`1px solid ${C.line}`:"none",background:selPts.has(p.id)?"#EAF6F7":hoverP===p.id?"#F4FBFC":"#fff",transition:"background .12s"}}>
+          <label className="pl-4 pr-1 self-stretch flex items-center cursor-pointer" onClick={e=>e.stopPropagation()}>
+            <input type="checkbox" checked={selPts.has(p.id)} onChange={()=>togglePt(p.id)} className="w-4 h-4 cursor-pointer" style={{accentColor:C.ink}}/>
+          </label>
+          <div onClick={()=>setViewP(p)} role="button" title="Open patient profile" className="flex-1 px-4 py-4 grid grid-cols-12 gap-3 items-center cursor-pointer">
           <span className="col-span-3">
             <div className="font-semibold flex items-center gap-1.5" style={{color:C.ink}}>{p.name}<History size={13} color={hoverP===p.id?C.teal:C.grey}/></div>
             <div className="text-[11px] flex items-center gap-2 mt-0.5" style={{color:C.grey}}><span>{p.zone}</span>
@@ -1175,9 +1195,20 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
           <span className="col-span-2" onClick={e=>e.stopPropagation()}><select value={p.doctor==="—"?"":p.doctor} onChange={e=>assignDoctor(p.id,e.target.value)} className="text-[12px] px-2 py-1.5 rounded-lg bg-white w-full" style={{border:`1px solid ${C.line}`,color:p.doctor==="—"?C.grey:C.ink}}>
             <option value="">Assign…</option>{doctors.map(d=><option key={d.id}>{d.name}</option>)}</select></span>
           <span className="col-span-1 flex items-center gap-1 justify-end text-[11px] font-semibold" style={{color:p.payment==="Paid"?C.green:C.amber}}><Wallet size={12}/>{p.payment}</span>
+          </div>
         </div>))}
         <p className="text-[11px] px-5 py-2.5" style={{color:C.grey,borderTop:`1px solid ${C.line}`}}><Wallet size={11} className="inline mr-1"/>Payment column is admin-only — doctors never see it.</p>
-      </div></>}
+      </div>
+      {confirmBulk&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={()=>setConfirmBulk(null)}>
+        <div className="w-full max-w-[420px] rounded-2xl p-6" style={{background:"#fff"}} onClick={e=>e.stopPropagation()}>
+          <div className="flex items-center gap-2.5 mb-2"><AlertTriangle size={20} color={C.red}/><h3 className="text-[17px] font-bold" style={{color:C.ink,fontFamily:"Georgia,serif"}}>Delete {confirmBulk.label}?</h3></div>
+          <p className="text-[13px] mb-4" style={{color:C.ink2}}>This permanently removes {confirmBulk.label} and all their sessions, SOAP notes and packages. Finance records (kept by name) stay in the books. This cannot be undone.</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={()=>setConfirmBulk(null)} className="px-4 py-2 rounded-xl text-[13px] font-semibold" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Cancel</button>
+            <button onClick={()=>{removePatients(confirmBulk.ids);setSelPts(new Set());setConfirmBulk(null);}} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-semibold text-white" style={{background:C.red}}><Trash2 size={14}/>Delete permanently</button>
+          </div>
+        </div>
+      </div>}</>}
 
       {/* PACKAGES — treatment plans (§4) */}
       {tab==="packages"&&<>

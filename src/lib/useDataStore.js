@@ -353,6 +353,23 @@ export function useDataStore({ role, me }) {
     notify('admin', `Patient deleted: ${pt?.name || 'Unknown'}`)
   }, [patients, notify])
 
+  // Bulk delete: same FK-safe order as removePatient, but one round-trip per
+  // table using `.in(...)` instead of N separate deletes.
+  const removePatients = useCallback(async (ids) => {
+    if (!ids || ids.length === 0) return
+    const set = new Set(ids)
+    setPatients((ps) => ps.filter((p) => !set.has(p.id)))
+    setVisits((vs) => vs.filter((v) => !set.has(v.patientId)))
+    setNotes((ns) => ns.filter((n) => !set.has(n.patientId)))
+    setPackages((pk) => pk.filter((x) => !set.has(x.patientId)))
+    await supabase.from('visits').delete().in('patient_id', ids)
+    await supabase.from('notes').delete().in('patient_id', ids)
+    await supabase.from('packages').delete().in('patient_id', ids)
+    const { error } = await supabase.from('patients').delete().in('id', ids)
+    if (error) { console.error('removePatients', error); return }
+    notify('admin', `${ids.length} patient${ids.length > 1 ? 's' : ''} deleted`)
+  }, [notify])
+
   const updateDoctorSlots = useCallback(async (id, slots, actor = 'admin') => {
     const d = doctors.find((x) => x.id === id)
     setDoctors((ds) => ds.map((x) => x.id === id ? { ...x, slots } : x))
@@ -609,7 +626,7 @@ export function useDataStore({ role, me }) {
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages,
     loading, error,
     // mutations
-    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient,
+    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
