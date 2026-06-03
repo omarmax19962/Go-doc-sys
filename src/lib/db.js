@@ -72,6 +72,10 @@ export const fromVisit = (r) => ({
   time: r.time,
   date: r.date,
   status: r.status,
+  cancelledBy: r.cancelled_by || null,
+  rescheduledToId: r.rescheduled_to_id || null,
+  rescheduledFromId: r.rescheduled_from_id || null,
+  soapFiled: !!r.soap_filed,
 })
 export const toVisit = (v) => ({
   patient_id: v.patientId,
@@ -80,6 +84,10 @@ export const toVisit = (v) => ({
   time: v.time,
   date: v.date,
   status: v.status,
+  cancelled_by: v.cancelledBy || null,
+  rescheduled_to_id: v.rescheduledToId || null,
+  rescheduled_from_id: v.rescheduledFromId || null,
+  soap_filed: !!v.soapFiled,
 })
 
 // ---- NOTES ----

@@ -695,9 +695,11 @@ const MANUAL_STATUS_OPTIONS=["follow_up","didnt_reply","paused","lost","active"]
 /* ---- visit & note state machines ---- */
 const VISIT_TYPES=["Assessment","Treatment","Follow_up","Discharge"];
 const VISIT_TYPE_LABEL={Assessment:"Assessment",Treatment:"Treatment",Follow_up:"Follow-up",Discharge:"Discharge"};
-const VISIT_STATUSES=["scheduled","confirmed","in_progress","completed","cancelled","no_show"];
-const VISIT_STATUS_LABEL={scheduled:"Scheduled",confirmed:"Confirmed",in_progress:"In progress",completed:"Completed",cancelled:"Cancelled",no_show:"No-show"};
-const visitStatusColor={scheduled:C.grey,confirmed:C.teal,in_progress:C.amber,completed:C.green,cancelled:"#8794A1",no_show:C.red};
+const VISIT_STATUSES=["scheduled","pending_confirmation","confirmed","in_progress","completed","cancelled","postponed","rescheduled","no_show","missed"];
+const VISIT_STATUS_LABEL={scheduled:"Scheduled",pending_confirmation:"Pending confirmation",confirmed:"Confirmed",in_progress:"In progress",completed:"Completed",cancelled:"Cancelled",postponed:"Postponed",rescheduled:"Rescheduled",no_show:"No-show",missed:"Missed (doctor)"};
+const visitStatusColor={scheduled:C.grey,pending_confirmation:"#C99A2E",confirmed:C.teal,in_progress:C.amber,completed:C.green,cancelled:"#8794A1",postponed:"#9B7BB8",rescheduled:"#6B8CBE",no_show:C.red,missed:"#B5462F"};
+// Terminal states cannot be re-opened from the status dropdown.
+const VISIT_TERMINAL=["completed","cancelled","rescheduled","no_show","missed"];
 const NOTE_STATES=["draft","submitted","under_review","approved","approved_comment","returned"];
 const NOTE_STATE_LABEL={draft:"Draft",submitted:"Submitted",under_review:"Under review",approved:"Approved",approved_comment:"Approved · comment",returned:"Returned"};
 
@@ -1099,7 +1101,9 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
           {fVisits.length===0&&<div className="px-5 py-4 text-[13px]" style={{color:C.grey}}>No visits match these filters.</div>}
           {fVisits.map((v,i)=>(<div key={v.id} className="px-5 py-4 flex items-center justify-between" style={{borderTop:i?`1px solid ${C.line}`:"none"}}>
             <div className="flex items-center gap-3"><span className="font-bold tabular-nums">{v.date||v.time}</span>
-              <div><div className="font-semibold">{nameOf(v.patientId)}</div><div className="text-[12px]" style={{color:C.grey}}>{v.doctorName} · {VISIT_TYPE_LABEL[v.type]||v.type}</div></div></div>
+              <div><div className="font-semibold flex items-center gap-1.5">{nameOf(v.patientId)}
+                {v.status==="completed"&&<span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background:v.soapFiled?C.green+"22":C.amber+"22",color:v.soapFiled?C.green:"#9a6a00"}}>{v.soapFiled?"SOAP filed":"SOAP missing"}</span>}</div>
+                <div className="text-[12px]" style={{color:C.grey}}>{v.doctorName} · {VISIT_TYPE_LABEL[v.type]||v.type}{v.status==="cancelled"&&v.cancelledBy?` · cancelled by ${v.cancelledBy}`:""}</div></div></div>
             <select value={v.status} onChange={e=>updateVisitStatus(v.id,e.target.value)} className="text-[11px] font-semibold px-2 py-1 rounded-full outline-none cursor-pointer" style={{background:visitStatusColor[v.status]+"22",color:visitStatusColor[v.status],border:`1px solid ${visitStatusColor[v.status]}44`}}>
               {VISIT_STATUSES.map(s=><option key={s} value={s} style={{background:"#fff",color:C.ink}}>{VISIT_STATUS_LABEL[s]}</option>)}
             </select></div>))}

@@ -188,11 +188,11 @@ export function useDataStore({ role, me }) {
     // mark visit completed (or create independent one)
     const existingVisit = visits.find((v) => v.id === n.visitId)
     if (existingVisit) {
-      await supabase.from('visits').update({ status: 'completed' }).eq('id', n.visitId)
-      setVisits((vs) => vs.map((v) => v.id === n.visitId ? { ...v, status: 'completed' } : v))
+      await supabase.from('visits').update({ status: 'completed', soap_filed: true }).eq('id', n.visitId)
+      setVisits((vs) => vs.map((v) => v.id === n.visitId ? { ...v, status: 'completed', soapFiled: true } : v))
     } else {
       const { data: vd } = await supabase.from('visits').insert({
-        patient_id: n.patientId, doctor_name: n.doctorName, type: n.type, time: 'logged', status: 'completed',
+        patient_id: n.patientId, doctor_name: n.doctorName, type: n.type, time: 'logged', status: 'completed', soap_filed: true,
       }).select().single()
       if (vd) setVisits((vs) => [...vs, fromVisit(vd)])
     }
@@ -281,13 +281,16 @@ export function useDataStore({ role, me }) {
     await supabase.from('finances').update(patch).eq('id', id)
   }, [])
 
-  const updateVisitStatus = useCallback(async (vid, status) => {
-    setVisits((vs) => vs.map((v) => v.id === vid ? { ...v, status } : v))
-    await supabase.from('visits').update({ status }).eq('id', vid)
+  const updateVisitStatus = useCallback(async (vid, status, by = null) => {
+    const patch = { status }
+    if (status === 'cancelled') patch.cancelled_by = by || 'admin'
+    setVisits((vs) => vs.map((v) => v.id === vid ? { ...v, status, cancelledBy: status === 'cancelled' ? (by || 'admin') : v.cancelledBy } : v))
+    await supabase.from('visits').update(patch).eq('id', vid)
     const v = visits.find((x) => x.id === vid)
     if (v) {
       const pt = patients.find((p) => p.id === v.patientId)
-      notify('admin', `${pt?.name || 'Visit'} → ${status}`)
+      const tail = status === 'cancelled' ? ` (by ${by || 'admin'})` : ''
+      notify('admin', `${pt?.name || 'Visit'} → ${status}${tail}`)
     }
   }, [visits, patients, notify])
 
