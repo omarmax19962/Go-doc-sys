@@ -2087,6 +2087,9 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
   const redFlags=hist.filter(n=>n.redFlag);
   const latestPlan=[...hist].reverse().find(n=>n.plan)?.plan;
   const upcoming=(visits||[]).filter(v=>v.patientId===patient.id&&v.status!=="completed");
+  const completedVisits=(visits||[]).filter(v=>v.patientId===patient.id&&v.status==="completed");
+  const undocVisits=completedVisits.filter(v=>!v.soapFiled).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  const sessionsTotal=Math.max(hist.length,completedVisits.length);
   const myFin=(finances||[]).filter(f=>f.patient===patient.name).map(f=>({...f,docEarn:f.fee*f.pct,godoc:f.fee*(1-f.pct)}));
   const billed=myFin.reduce((a,r)=>a+r.fee,0), paidAmt=myFin.filter(r=>r.status==="Paid").reduce((a,r)=>a+r.fee,0), pendAmt=billed-paidAmt;
   const[mode,setMode]=useState("profile");const[sub,setSub]=useState("overview");
@@ -2149,7 +2152,7 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
           <Info label="Location" value={patient.locText}/><Info label="Next visit" value={upcoming[0]?(upcoming[0].date||upcoming[0].time):"none scheduled"}/>
         </div>
         <div className="grid grid-cols-4 gap-3">
-          {[["Sessions",sessions,C.ink],["Start pain",startPain??"–",painColor(startPain||0)],["Now",endPain??"–",painColor(endPain||0)],["Improvement",`${improvePct}%`,C.green]].map(([l,v,c])=>(
+          {[["Sessions",sessionsTotal,C.ink],["Start pain",startPain??"–",painColor(startPain||0)],["Now",endPain??"–",painColor(endPain||0)],["Improvement",`${improvePct}%`,C.green]].map(([l,v,c])=>(
             <div key={l} className="bg-white rounded-2xl p-3.5" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[22px] font-bold" style={{color:c}}>{v}</div></div>))}
         </div>
         <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
@@ -2175,9 +2178,20 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
             <div className="px-5 py-2.5 flex items-center justify-between" style={{background:"#F4F4F2"}}><span className="text-[11px] font-bold uppercase tracking-wider" style={{color:C.grey}}>{up.length} upcoming session{up.length>1?"s":""}{undated>0?` · ${undated} need a date`:""}</span></div>
             {up.map(v=><UpcomingSessionRow key={v.id} v={v} rescheduleVisit={rescheduleVisit}/>)}
           </div>):null;})()}
+        {(()=>{const uv=undocVisits.filter(v=>!tlType||v.type===tlType);return uv.length>0?(
+          <div className="bg-white rounded-2xl overflow-hidden mb-4" style={{border:`1px solid ${C.line}`}}>
+            <div className="px-5 py-2.5" style={{background:"#FFF8EC"}}><span className="text-[11px] font-bold uppercase tracking-wider" style={{color:"#9a6a00"}}>{uv.length} completed · SOAP not filed yet</span></div>
+            {uv.slice().reverse().map(v=>(
+              <div key={v.id} className="px-5 py-3 flex items-center gap-4" style={{borderTop:`1px solid ${C.line}`}}>
+                <span className="text-[12px] tabular-nums w-20" style={{color:C.grey}}>{v.date||"no date"}</span>
+                <span className="text-[12px] font-semibold w-24">{VISIT_TYPE_LABEL[v.type]||v.type}</span>
+                <span className="text-[12px]" style={{color:C.grey}}>{v.doctorName||"—"}</span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto" style={{background:C.amber+"22",color:"#9a6a00"}}>SOAP missing</span>
+              </div>))}
+          </div>):null;})()}
         <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
           <div className="px-5 py-2.5 flex items-center justify-between" style={{background:"#F4F4F2"}}>
-            <span className="text-[11px] font-bold uppercase tracking-wider" style={{color:C.grey}}>{hist.length} sessions · tap to expand</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{color:C.grey}}>{hist.length} documented · tap to expand</span>
             <Sel value={tlType} onChange={setTlType} options={VISIT_TYPES} label="All types"/>
           </div>
           {hist.filter(n=>!tlType||n.type===tlType).slice().reverse().map(n=>{const o=open===n.id;return(

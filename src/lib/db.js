@@ -217,6 +217,7 @@ export const fromFinance = (r) => ({
   pct: Number(r.pct),
   status: r.status,
   method: r.method,
+  visitId: r.visit_id || null,
 })
 export const toFinance = (f) => ({
   date: f.date,
@@ -227,6 +228,7 @@ export const toFinance = (f) => ({
   pct: f.pct,
   status: f.status,
   method: f.method,
+  visit_id: f.visitId || null,
 })
 
 // ---- EXPENSES ----

@@ -267,6 +267,7 @@ export function useDataStore({ role, me }) {
     setNotes((ns) => [...ns, inserted])
 
     // mark visit completed (or create independent one)
+    let completedVisitId = n.visitId
     const existingVisit = visits.find((v) => v.id === n.visitId)
     if (existingVisit) {
       await supabase.from('visits').update({ status: 'completed', soap_filed: true }).eq('id', n.visitId)
@@ -275,7 +276,7 @@ export function useDataStore({ role, me }) {
       const { data: vd } = await supabase.from('visits').insert({
         patient_id: n.patientId, doctor_name: n.doctorName, type: n.type, time: 'logged', status: 'completed', soap_filed: true,
       }).select().single()
-      if (vd) setVisits((vs) => [...vs, fromVisit(vd)])
+      if (vd) { setVisits((vs) => [...vs, fromVisit(vd)]); completedVisitId = vd.id }
     }
 
     // next session?
@@ -294,10 +295,11 @@ export function useDataStore({ role, me }) {
     }
     if (pt && pt.status !== 'active') changeStatus(n.patientId, 'active', `First note logged by ${n.doctorName}`, 'System')
 
-    // finance entry
+    // finance entry (linked to the visit so we never double-bill it)
     const fin = {
       date: today, doctor: n.doctorName, patient: n.patientName, type: n.type,
       fee: config.defaultFee, pct: config.defaultPct, status: 'Pending', method: 'Cash',
+      visit_id: completedVisitId || null,
     }
     const { data: fd } = await supabase.from('finances').insert(fin).select().single()
     if (fd) setFinances((fs) => [...fs, fromFinance(fd)])
@@ -458,8 +460,20 @@ export function useDataStore({ role, me }) {
       const pt = patients.find((p) => p.id === v.patientId)
       const tail = status === 'cancelled' ? ` (by ${by || 'admin'})` : ''
       notify('admin', `${pt?.name || 'Visit'} → ${status}${tail}`)
+      // When a session is marked completed, generate its billing entry once
+      // (guarded by visit_id so a later SOAP note won't double-bill the same visit).
+      if (status === 'completed' && !finances.some((f) => f.visitId === vid)) {
+        const fin = {
+          date: v.date || new Date().toISOString().slice(0, 10), doctor: v.doctorName,
+          patient: pt?.name || '—', type: v.type || 'Treatment',
+          fee: config.defaultFee, pct: config.defaultPct, status: 'Pending', method: 'Cash',
+          visit_id: vid,
+        }
+        const { data: fd } = await supabase.from('finances').insert(fin).select().single()
+        if (fd) setFinances((fs) => [...fs, fromFinance(fd)])
+      }
     }
-  }, [visits, patients, notify])
+  }, [visits, patients, finances, config, notify])
 
   const updateConfig = useCallback(async (patch) => {
     const next = { ...config, ...patch }
