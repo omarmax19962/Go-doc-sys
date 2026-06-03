@@ -43,6 +43,8 @@ export const fromPatient = (r) => ({
   payment: r.payment || 'Pending',
   statusHistory: r.status_history || [],
   discharge: r.discharge || null,
+  source: r.source || '',
+  createdAt: r.created_at || null,
 })
 export const toPatient = (p) => ({
   name: p.name,
@@ -61,6 +63,7 @@ export const toPatient = (p) => ({
   payment: p.payment || 'Pending',
   status_history: p.statusHistory || [],
   discharge: p.discharge || null,
+  source: p.source ? p.source.trim() : null,
 })
 
 // ---- VISITS ----
@@ -71,6 +74,7 @@ export const fromVisit = (r) => ({
   type: r.type,
   time: r.time,
   date: r.date,
+  durationMin: r.duration_min ?? 45,
   status: r.status,
   cancelledBy: r.cancelled_by || null,
   rescheduledToId: r.rescheduled_to_id || null,
@@ -90,6 +94,7 @@ export const toVisit = (v) => ({
   type: v.type,
   time: v.time,
   date: v.date,
+  duration_min: v.durationMin ?? 45,
   status: v.status,
   cancelled_by: v.cancelledBy || null,
   rescheduled_to_id: v.rescheduledToId || null,
@@ -216,6 +221,24 @@ export const toFinance = (f) => ({
   pct: f.pct,
   status: f.status,
   method: f.method,
+})
+
+// ---- EXPENSES ----
+export const fromExpense = (r) => ({
+  id: r.id,
+  month: r.month,
+  category: r.category || 'Marketing',
+  label: r.label || '',
+  amount: Number(r.amount || 0),
+  note: r.note || '',
+  createdAt: r.created_at || null,
+})
+export const toExpense = (e) => ({
+  month: e.month,
+  category: e.category || 'Marketing',
+  label: e.label ? e.label.trim() : null,
+  amount: e.amount == null || e.amount === '' ? 0 : Number(e.amount),
+  note: e.note ? e.note.trim() : null,
 })
 
 // ---- CONFIG ----

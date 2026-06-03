@@ -8,6 +8,7 @@ import {
   fromExercise, toExercise,
   fromModality, toModality,
   fromFinance, toFinance,
+  fromExpense, toExpense,
   fromConfig, toConfig,
   fromPackage, toPackage,
   fromNotif,
@@ -28,6 +29,7 @@ export function useDataStore({ role, me }) {
   const [exerciseLib, setExerciseLib] = useState([])
   const [modalityLib, setModalityLib] = useState([])
   const [finances, setFinances] = useState([])
+  const [expenses, setExpenses] = useState([])
   const [packages, setPackages] = useState([])
   const [config, setConfigState] = useState({ defaultFee: 500, defaultPct: 0.6, currency: 'EGP', noShowConsumesSlot: true, packageCreationTiming: 'post_assessment' })
   const [notifs, setNotifs] = useState([])
@@ -40,7 +42,7 @@ export function useDataStore({ role, me }) {
   const loadAll = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [d, p, v, n, ex, m, f, c, notes_n, pk] = await Promise.all([
+      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp] = await Promise.all([
         supabase.from('doctors').select('*').order('id'),
         supabase.from('patients').select('*').order('id'),
         supabase.from('visits').select('*').order('id'),
@@ -51,6 +53,7 @@ export function useDataStore({ role, me }) {
         supabase.from('config').select('*').eq('id', 1).maybeSingle(),
         supabase.from('notifications').select('*').order('ts', { ascending: false }).limit(50),
         supabase.from('packages').select('*').order('id'),
+        supabase.from('expenses').select('*').order('id'),
       ])
       if (d.error) throw d.error
       setDoctors((d.data || []).map(fromDoctor))
@@ -63,6 +66,7 @@ export function useDataStore({ role, me }) {
       if (c.data) setConfigState(fromConfig(c.data))
       setNotifs((notes_n.data || []).map(fromNotif))
       setPackages((pk.data || []).map(fromPackage))
+      setExpenses((exp.data || []).map(fromExpense))
     } catch (e) {
       console.error('[useDataStore] load failed', e)
       setError(e.message || String(e))
@@ -88,6 +92,9 @@ export function useDataStore({ role, me }) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' }, () => {
         supabase.from('packages').select('*').order('id').then(({ data }) => setPackages((data || []).map(fromPackage)))
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
+        supabase.from('expenses').select('*').order('id').then(({ data }) => setExpenses((data || []).map(fromExpense)))
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
@@ -183,6 +190,46 @@ export function useDataStore({ role, me }) {
     }
     if (name) notify('doctor', `You were assigned to ${pt?.name || 'a patient'} — visit added to your list`, name)
   }, [patients, visits, changeStatus, notify])
+
+  // Calendly-style booking: drops a scheduled visit at a specific date/time.
+  // If `newPatient` is supplied (no patientId), creates the patient first.
+  const bookSession = useCallback(async ({ patientId, newPatient, doctorName, date, time, durationMin = 45, type = 'Treatment', booker = 'admin' }) => {
+    let pid = patientId
+    let pname
+    if (!pid && newPatient && newPatient.name) {
+      const row = {
+        ...newPatient,
+        status: 'booked',
+        doctor: doctorName || '—',
+        payment: 'Pending',
+        statusHistory: [{ from: null, to: 'booked', by: booker === 'doctor' ? doctorName : 'Admin', note: 'Booked via calendar', at: nowISO() }],
+      }
+      const { data, error } = await supabase.from('patients').insert(toPatient(row)).select().single()
+      if (error) { console.error('bookSession patient', error); return }
+      const inserted = fromPatient(data)
+      setPatients((ps) => [...ps, inserted])
+      pid = inserted.id; pname = inserted.name
+    } else {
+      pname = patients.find((p) => p.id === pid)?.name || '—'
+    }
+    if (!pid) return
+    const v = { patient_id: pid, doctor_name: doctorName, type, time: time || '—', date: date || null, duration_min: durationMin, status: 'scheduled' }
+    const { data: vd, error: verr } = await supabase.from('visits').insert(v).select().single()
+    if (verr) { console.error('bookSession visit', verr); return }
+    setVisits((vs) => [...vs, fromVisit(vd)])
+    notify('admin', `Session booked: ${pname} → ${doctorName || '—'} (${date || '—'} ${time || ''})`)
+    if (doctorName && booker !== 'doctor') notify('doctor', `New session booked: ${pname} (${date || '—'} ${time || ''})`, doctorName)
+  }, [patients, notify])
+
+  // Move/resize a visit on the calendar (drag or edit).
+  const rescheduleVisit = useCallback(async (vid, { date, time, durationMin }) => {
+    const patch = {}
+    if (date !== undefined) patch.date = date
+    if (time !== undefined) patch.time = time
+    if (durationMin !== undefined) patch.duration_min = durationMin
+    setVisits((vs) => vs.map((v) => v.id === vid ? { ...v, ...(date !== undefined ? { date } : {}), ...(time !== undefined ? { time } : {}), ...(durationMin !== undefined ? { durationMin } : {}) } : v))
+    await supabase.from('visits').update(patch).eq('id', vid)
+  }, [])
 
   const submitNote = useCallback(async (n) => {
     // Package chronological lock: cannot document a session until every
@@ -298,6 +345,30 @@ export function useDataStore({ role, me }) {
   const updateFinance = useCallback(async (id, patch) => {
     setFinances((fs) => fs.map((f) => f.id === id ? { ...f, ...patch } : f))
     await supabase.from('finances').update(patch).eq('id', id)
+  }, [])
+
+  // ---- EXPENSES (operational spend + marketing CAC) ----
+  const addExpense = useCallback(async (e) => {
+    const { data, error } = await supabase.from('expenses').insert(toExpense(e)).select().single()
+    if (error) { console.error('addExpense', error); return }
+    setExpenses((xs) => [...xs, fromExpense(data)])
+    notify('admin', `Expense logged: ${e.category}${e.label ? ` · ${e.label}` : ''} — ${e.amount} (${e.month})`)
+  }, [notify])
+
+  const updateExpense = useCallback(async (id, patch) => {
+    setExpenses((xs) => xs.map((x) => x.id === id ? { ...x, ...patch } : x))
+    const clean = {}
+    if ('month' in patch) clean.month = patch.month
+    if ('category' in patch) clean.category = patch.category
+    if ('label' in patch) clean.label = patch.label ? patch.label.trim() : null
+    if ('amount' in patch) clean.amount = patch.amount === '' || patch.amount == null ? 0 : Number(patch.amount)
+    if ('note' in patch) clean.note = patch.note ? patch.note.trim() : null
+    await supabase.from('expenses').update(clean).eq('id', id)
+  }, [])
+
+  const removeExpense = useCallback(async (id) => {
+    setExpenses((xs) => xs.filter((x) => x.id !== id))
+    await supabase.from('expenses').delete().eq('id', id)
   }, [])
 
   const updateVisitStatus = useCallback(async (vid, status, by = null) => {
@@ -483,15 +554,16 @@ export function useDataStore({ role, me }) {
 
   return {
     // data
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, config, notifs, packages,
+    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, config, notifs, packages,
     loading, error,
     // mutations
     addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
-    updateFinance, updateVisitStatus, updateConfig,
+    updateFinance, addExpense, updateExpense, removeExpense, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,
+    bookSession, rescheduleVisit,
     setExerciseLib: setExerciseLibPersisted,
     setModalityLib: setModalityLibPersisted,
     notify, markRead,
