@@ -12,6 +12,7 @@ export const fromDoctor = (r) => ({
   zones: r.zones || [],
   slots: r.slots || [],
   files: r.files || [],
+  email: r.email || '',
   userId: r.user_id || null,
 })
 export const toDoctor = (d) => ({
@@ -20,6 +21,7 @@ export const toDoctor = (d) => ({
   zones: d.zones || [],
   slots: d.slots || [],
   files: d.files || [],
+  email: d.email ? d.email.trim() : null,
 })
 
 // ---- PATIENTS ----

@@ -263,6 +263,14 @@ export function useDataStore({ role, me }) {
     else notify('doctor', `Admin updated your availability (${slots.length} slots/wk)`, d?.name)
   }, [doctors, notify])
 
+  const updateDoctorZones = useCallback(async (id, zones, actor = 'admin') => {
+    const d = doctors.find((x) => x.id === id)
+    setDoctors((ds) => ds.map((x) => x.id === id ? { ...x, zones } : x))
+    await supabase.from('doctors').update({ zones }).eq('id', id)
+    if (actor === 'doctor') notify('admin', `${d?.name || 'A doctor'} updated their coverage zones (${zones.length})`)
+    else notify('doctor', `Admin updated your coverage zones (${zones.length})`, d?.name)
+  }, [doctors, notify])
+
   const updateFinance = useCallback(async (id, patch) => {
     setFinances((fs) => fs.map((f) => f.id === id ? { ...f, ...patch } : f))
     await supabase.from('finances').update(patch).eq('id', id)
@@ -318,7 +326,7 @@ export function useDataStore({ role, me }) {
     // mutations
     addPatient, assignDoctor, updatePatientStatus, dischargePatient,
     submitNote, reviewNote, openNoteForReview,
-    addDoctor, removeDoctor, updateDoctorSlots,
+    addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, updateVisitStatus, updateConfig,
     setExerciseLib: setExerciseLibPersisted,
     setModalityLib: setModalityLibPersisted,

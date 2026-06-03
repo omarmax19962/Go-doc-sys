@@ -770,7 +770,7 @@ function AppWithData({ role, me, onSignOut }){
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, config, notifs,
     addPatient, assignDoctor, updatePatientStatus, dischargePatient,
     submitNote, reviewNote, openNoteForReview,
-    addDoctor, removeDoctor, updateDoctorSlots,
+    addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, updateVisitStatus, updateConfig,
     setExerciseLib, setModalityLib, markRead,
   } = store;
@@ -784,7 +784,7 @@ function AppWithData({ role, me, onSignOut }){
       </div>
       {role==="admin"
         ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updateVisitStatus,updateConfig,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,notifs,markRead}}/>}
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,notifs,markRead}}/>}
     </div>
   );
 }
@@ -907,6 +907,10 @@ function _LegacyMockApp(){
     setDoctors(ds=>ds.map(x=>x.id===id?{...x,slots}:x));
     if(actor==="doctor")notify("admin",`${d?.name||"A doctor"} updated their availability (${slots.length} slots/wk)`);
     else notify("doctor",`Admin updated your availability (${slots.length} slots/wk)`,d?.name);};
+  const updateDoctorZones=(id,zones,actor="admin")=>{const d=doctors.find(x=>x.id===id);
+    setDoctors(ds=>ds.map(x=>x.id===id?{...x,zones}:x));
+    if(actor==="doctor")notify("admin",`${d?.name||"A doctor"} updated their coverage zones (${zones.length})`);
+    else notify("doctor",`Admin updated your coverage zones (${zones.length})`,d?.name);};
   const updateFinance=(id,patch)=>setFinances(fs=>fs.map(f=>f.id===id?{...f,...patch}:f));
   const updateVisitStatus=(vid,status)=>{setVisits(vs=>vs.map(v=>v.id===vid?{...v,status}:v));
     const v=visits.find(x=>x.id===vid);if(v){const pt=patients.find(p=>p.id===v.patientId);
@@ -923,7 +927,7 @@ function _LegacyMockApp(){
       </div>
       {role==="admin"
         ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updateVisitStatus,updateConfig,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,notifs,markRead}}/>}
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,notifs,markRead}}/>}
     </div>
   );
 }
@@ -1108,7 +1112,7 @@ function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots})
         <Field label="Name"><input value={nd.name} onChange={e=>setNd(s=>({...s,name:e.target.value}))} placeholder="Dr. …" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         <Field label="Specialty"><input value={nd.spec} onChange={e=>setNd(s=>({...s,spec:e.target.value}))} placeholder="Ortho / Neuro" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
       </div>
-      <Field label="Email (sends a login invite)"><input type="email" value={nd.email} onChange={e=>setNd(s=>({...s,email:e.target.value}))} placeholder="doctor@example.com" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+      <Field label="Login email (doctor signs in with this — no email sent)"><input type="email" value={nd.email} onChange={e=>setNd(s=>({...s,email:e.target.value}))} placeholder="doctor@example.com" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
       <Field label="Coverage zones"><div className="flex flex-wrap gap-2">{ZONES.map(z=>{const on=nd.zones.includes(z);return(
         <button key={z} onClick={()=>setNd(s=>({...s,zones:on?s.zones.filter(x=>x!==z):[...s.zones,z]}))} className="px-3 py-1.5 rounded-full text-[12px] font-semibold" style={{background:on?C.teal:"#fff",color:on?C.ink:C.ink2,border:`1px solid ${on?C.teal:C.line}`}}>{z}</button>);})}</div></Field>
       <Field label="Availability — tap the slots they work"><SlotGrid slots={nd.slots} onToggle={toggleNd}/></Field>
@@ -1117,16 +1121,10 @@ function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots})
         setInviteMsg("");
         await addDoctor(nd);
         if(nd.email){
-          try{
-            const{inviteDoctor}=await import("./lib/invites.js");
-            const created=doctors.find(d=>d.name===nd.name);
-            const r=await inviteDoctor({email:nd.email,full_name:nd.name,doctor_id:created?.id});
-            if(r?.ok){setInviteMsg(`✓ Invite sent to ${nd.email}`);}
-            else{setInviteMsg(`Doctor saved, but invite failed: ${r?.error||"check Edge Function"}`);}
-          }catch(e){setInviteMsg(`Doctor saved, but invite failed: ${e.message}`);}
+          setInviteMsg(`✓ Saved. ${nd.email} can now sign in on the Doctor tab and set a password.`);
         }
-        setTimeout(()=>{setNd({name:"",spec:"",zones:[],slots:[],email:""});setAdding(false);setInviteMsg("");},nd.email?2000:0);
-      }} className="px-5 py-2.5 rounded-xl font-semibold text-white disabled:opacity-40" style={{background:C.ink}}>{nd.email?"Save & invite":"Save doctor"}</button>
+        setTimeout(()=>{setNd({name:"",spec:"",zones:[],slots:[],email:""});setAdding(false);setInviteMsg("");},nd.email?2600:0);
+      }} className="px-5 py-2.5 rounded-xl font-semibold text-white disabled:opacity-40" style={{background:C.ink}}>Save doctor</button>
     </div>}
     <div className="grid grid-cols-2 gap-4">
       {doctors.map(d=>(<div key={d.id} className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
@@ -1584,7 +1582,7 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
 }
 
 /* =============================== DOCTOR =============================== */
-function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,notifs,markRead}){
+function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,notifs,markRead}){
   const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);
   const mine=visits.filter(v=>v.doctorName===me&&v.status!=="completed");
   const myPatients=patients.filter(p=>p.doctor===me);
@@ -1592,6 +1590,8 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,submit
   const mySlots=meDoc?.slots||[];
   const myDays=[...new Set(mySlots.map(s=>s.split("-")[0]))];
   const toggleSlot=k=>meDoc&&updateDoctorSlots(meDoc.id,mySlots.includes(k)?mySlots.filter(x=>x!==k):[...mySlots,k],"doctor");
+  const myZones=meDoc?.zones||[];
+  const toggleZone=z=>meDoc&&updateDoctorZones(meDoc.id,myZones.includes(z)?myZones.filter(x=>x!==z):[...myZones,z],"doctor");
   const pOf=id=>patients.find(p=>p.id===id);
   const startSession=(p)=>{setPicker(false);setActive({visit:{id:Date.now(),patientId:p.id,doctorName:me,type:"Treatment",time:"now"},patient:p});};
   return(<div className="relative w-full max-w-[430px] min-h-screen" style={{background:C.bg}}>
@@ -1640,9 +1640,14 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,submit
             </div>
           </div>
           <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
-            <div className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{color:C.grey}}>Coverage zones</div>
-            <div className="flex flex-wrap gap-1.5">{(meDoc.zones||[]).map(z=><span key={z} className="text-[12px] px-2.5 py-1 rounded-lg" style={{background:"#F4FBFC",color:C.ink,border:`1px solid ${C.tealSoft}`}}>{z}</span>)}{!(meDoc.zones||[]).length&&<span className="text-[13px]" style={{color:C.grey}}>None assigned</span>}</div>
-            <p className="text-[11px] mt-2" style={{color:C.grey}}>Zones are set with the admin.</p>
+            <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{color:C.grey}}>Coverage zones</div>
+            <p className="text-[12px] mb-3" style={{color:C.grey}}>Tap the zones you cover. Changes save instantly and the admin sees them live.</p>
+            <div className="flex flex-wrap gap-1.5">{ZONES.map(z=>{const on=myZones.includes(z);return(
+              <button key={z} type="button" onClick={()=>toggleZone(z)} className="text-[12px] px-2.5 py-1 rounded-lg font-semibold" style={{background:on?C.teal:"#F4FBFC",color:on?C.ink:C.ink,border:`1px solid ${on?C.teal:C.tealSoft}`}}>{z}</button>);})}</div>
+            <div className="flex items-center justify-between mt-3 pt-3 text-[12px]" style={{borderTop:`1px solid ${C.line}`,color:C.grey}}>
+              <span>{myZones.length} zone(s) covered</span>
+              {myZones.length>0&&<button onClick={()=>updateDoctorZones(meDoc.id,[],"doctor")} className="font-semibold" style={{color:C.red}}>Clear all</button>}
+            </div>
           </div>
         </>}
       </div>}
