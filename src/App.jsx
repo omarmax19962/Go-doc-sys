@@ -1781,10 +1781,11 @@ function GrowthCAC({finances,expenses,addExpense,updateExpense,removeExpense,pat
   const campaigns=useMemo(()=>{const m={};patients.forEach(p=>{const k=(p.source||"").trim()||"(unattributed)";if(!m[k])m[k]={source:k,patients:0,rev:0,go:0};m[k].patients++;m[k].rev+=revByPatient[p.name]?.fee||0;m[k].go+=revByPatient[p.name]?.go||0;});return Object.values(m).sort((a,b)=>b.rev-a.rev);},[patients,revByPatient]);
 
   const totMkt=rows.reduce((a,r)=>a+r.marketing,0),totNew=rows.reduce((a,r)=>a+r.newPts,0);
-  const cards=[["Total marketing spend",egp(totMkt),C.ink],["New patients",totNew,"#2E6E73"],["Blended CAC",totNew?egp(totMkt/totNew):"—",C.amber],["Total operating expenses",egp(rows.reduce((a,r)=>a+r.allExp,0)),C.red]];
+  const totRev=rows.reduce((a,r)=>a+r.billedRev,0),totGo=rows.reduce((a,r)=>a+r.billedGo,0),totExp=rows.reduce((a,r)=>a+r.allExp,0),totNet=totGo-totExp;
+  const cards=[["Total marketing spend",egp(totMkt),C.ink],["New patients",totNew,"#2E6E73"],["Blended CAC",totNew?egp(totMkt/totNew):"—",C.amber],["Total operating expenses",egp(totExp),C.red],["Total net income",egp(totNet),totNet>=0?C.green:C.red]];
 
   return(<div>
-    <div className="grid grid-cols-4 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
+    <div className="grid grid-cols-5 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
 
     {/* expense entry + list */}
     <div className="bg-white rounded-2xl p-5 mb-4" style={{border:`1px solid ${C.line}`}}>
@@ -1819,6 +1820,13 @@ function GrowthCAC({finances,expenses,addExpense,updateExpense,removeExpense,pat
         <span className="text-right tabular-nums" style={{color:C.red}}>{r.allExp?egp(r.allExp):"—"}</span>
         <span className="text-right tabular-nums font-bold" style={{color:r.net>=0?C.green:C.red}}>{egp(r.net)}</span>
       </div>))}
+      {rows.length>0&&<div className="px-4 py-3 grid gap-2 items-center text-[13px]" style={{borderTop:`2px solid ${C.ink}`,gridTemplateColumns:"110px 1fr 1fr 1fr 1fr",minWidth:"640px",background:"#F4F4F2"}}>
+        <span className="font-bold uppercase text-[11px] tracking-wider" style={{color:C.ink}}>Total</span>
+        <span className="text-right tabular-nums font-bold">{egp(totRev)}</span>
+        <span className="text-right tabular-nums font-bold" style={{color:"#2E6E73"}}>{egp(totGo)}</span>
+        <span className="text-right tabular-nums font-bold" style={{color:C.red}}>{egp(totExp)}</span>
+        <span className="text-right tabular-nums font-bold text-[15px]" style={{color:totNet>=0?C.green:C.red}}>{egp(totNet)}</span>
+      </div>}
     </div>
 
     {/* acquisition cohorts & CAC */}
