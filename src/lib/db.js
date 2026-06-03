@@ -87,6 +87,9 @@ export const fromVisit = (r) => ({
   reminderSameday: !!r.reminder_sameday,
   rescheduleRequested: !!r.reschedule_requested,
   rescheduleNote: r.reschedule_note || null,
+  bookedBy: r.booked_by || 'patient',
+  relativeName: r.relative_name || null,
+  relativeRelation: r.relative_relation || null,
 })
 export const toVisit = (v) => ({
   patient_id: v.patientId,
@@ -102,6 +105,9 @@ export const toVisit = (v) => ({
   soap_filed: !!v.soapFiled,
   package_id: v.packageId || null,
   package_seq: v.packageSeq ?? null,
+  booked_by: v.bookedBy || 'patient',
+  relative_name: v.relativeName || null,
+  relative_relation: v.relativeRelation || null,
 })
 
 // ---- PACKAGES ----

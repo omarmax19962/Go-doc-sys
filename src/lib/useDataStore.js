@@ -200,7 +200,7 @@ export function useDataStore({ role, me }) {
 
   // Calendly-style booking: drops a scheduled visit at a specific date/time.
   // If `newPatient` is supplied (no patientId), creates the patient first.
-  const bookSession = useCallback(async ({ patientId, newPatient, doctorName, date, time, durationMin = 45, type = 'Treatment', booker = 'admin' }) => {
+  const bookSession = useCallback(async ({ patientId, newPatient, doctorName, date, time, durationMin = 45, type = 'Treatment', booker = 'admin', bookedBy = 'patient', relativeName = null, relativeRelation = null }) => {
     let pid = patientId
     let pname
     if (!pid && newPatient && newPatient.name) {
@@ -220,7 +220,7 @@ export function useDataStore({ role, me }) {
       pname = patients.find((p) => p.id === pid)?.name || '—'
     }
     if (!pid) return
-    const v = { patient_id: pid, doctor_name: doctorName, type, time: time || '—', date: date || null, duration_min: durationMin, status: 'scheduled' }
+    const v = { patient_id: pid, doctor_name: doctorName, type, time: time || '—', date: date || null, duration_min: durationMin, status: 'scheduled', booked_by: bookedBy || 'patient', relative_name: bookedBy === 'relative' ? (relativeName || null) : null, relative_relation: bookedBy === 'relative' ? (relativeRelation || null) : null }
     const { data: vd, error: verr } = await supabase.from('visits').insert(v).select().single()
     if (verr) { console.error('bookSession visit', verr); return }
     setVisits((vs) => [...vs, fromVisit(vd)])

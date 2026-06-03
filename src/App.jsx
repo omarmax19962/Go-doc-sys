@@ -1403,6 +1403,7 @@ function TimeGridHeader({title,view,setView,step,goToday}){
 
 /* ---------- BookingModal — Calendly-style: book existing or new patient ---------- */
 const DURATIONS=[30,45,60,90];
+const RELATIONS=["Father","Mother","Son","Daughter","Husband","Wife","Brother","Sister","Grandfather","Grandmother","Uncle","Aunt","Son-in-law","Daughter-in-law","Friend","Caregiver","Other"];
 function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onClose,onBook}){
   const[pmode,setPmode]=useState("existing");
   const[q,setQ]=useState("");
@@ -1413,15 +1414,18 @@ function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onC
   const[time,setTime]=useState(slot?.time||"09:00");
   const[duration,setDuration]=useState(45);
   const[typeManual,setTypeManual]=useState(null);
+  const[bookedBy,setBookedBy]=useState("patient");
+  const[relName,setRelName]=useState("");
+  const[relRelation,setRelRelation]=useState("");
   const norm=s=>(s||"").toLowerCase();
   const matches=useMemo(()=>{const t=norm(q);if(t.length<1)return patients.slice(0,6);return patients.filter(p=>norm(p.name).includes(t)||(p.phone||"").includes(q)).slice(0,8);},[q,patients]);
   // First-time patients (no prior non-cancelled visits) → this is their "1st session", default to Assessment.
   const priorVisits=useMemo(()=>{const pid=fixedPatient?.id??picked?.id;if(pmode==="new"||!pid)return 0;return(visits||[]).filter(v=>v.patientId===pid&&v.status!=="cancelled").length;},[visits,picked,pmode,fixedPatient]);
   const isFirst=pmode==="new"||priorVisits===0;
   const type=typeManual??(isFirst?"Assessment":"Treatment");
-  const valid=(pmode==="existing"?!!picked:!!np.name.trim())&&!!doctor&&!!date&&!!time;
+  const valid=(pmode==="existing"?!!picked:!!np.name.trim())&&!!doctor&&!!date&&!!time&&(bookedBy!=="relative"||!!relName.trim());
   const submit=()=>{if(!valid)return;
-    onBook({patientId:pmode==="existing"?picked.id:undefined,newPatient:pmode==="new"?np:undefined,doctorName:doctor,date,time,durationMin:duration,type});
+    onBook({patientId:pmode==="existing"?picked.id:undefined,newPatient:pmode==="new"?np:undefined,doctorName:doctor,date,time,durationMin:duration,type,bookedBy,relativeName:bookedBy==="relative"?relName.trim():null,relativeRelation:bookedBy==="relative"?relRelation:null});
     onClose();};
   return(<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.5)"}} onClick={onClose}>
     <div className="w-full max-w-[440px] rounded-3xl overflow-hidden" style={{background:C.bg}} onClick={e=>e.stopPropagation()}>
@@ -1455,6 +1459,16 @@ function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onC
           <Field label="Type"><select value={type} onChange={e=>setTypeManual(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{VISIT_TYPES.map(t=><option key={t} value={t}>{t==="Assessment"&&isFirst?"1st session (Assessment)":VISIT_TYPE_LABEL[t]}</option>)}</select></Field>
         </div>
         {!fixedDoctor&&<Field label="Doctor"><select value={doctor} onChange={e=>setDoctor(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{doctors.map(d=><option key={d.id}>{d.name}</option>)}</select></Field>}
+        <div>
+          <span className="text-[12px] font-semibold" style={{color:C.ink2}}>Booked by</span>
+          <div className="flex gap-1 p-1 rounded-xl mt-1" style={{background:"#e7e2d6"}}>
+            {[["patient","Patient"],["relative","Relative"]].map(([k,l])=>(<button key={k} onClick={()=>setBookedBy(k)} className="flex-1 py-2 rounded-lg text-[13px] font-bold" style={{background:bookedBy===k?C.teal:"transparent",color:bookedBy===k?C.ink:C.grey}}>{l}</button>))}
+          </div>
+        </div>
+        {bookedBy==="relative"&&<div className="grid grid-cols-2 gap-2">
+          <Field label="Relative name"><input value={relName} onChange={e=>setRelName(e.target.value)} placeholder="Full name *" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+          <Field label="Relationship"><select value={relRelation} onChange={e=>setRelRelation(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:relRelation?C.ink:C.grey}}><option value="">Select…</option>{RELATIONS.map(r=><option key={r} value={r}>{r}</option>)}</select></Field>
+        </div>}
       </div>
       <div className="px-5 py-4 flex gap-2" style={{background:"#fff",borderTop:`1px solid ${C.line}`}}>
         <button onClick={onClose} className="flex-1 py-2.5 rounded-xl font-semibold text-[14px]" style={{background:C.bg,color:C.ink2,border:`1px solid ${C.line}`}}>Cancel</button>
@@ -1477,6 +1491,7 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
         <div><div className="text-[15px] font-bold" style={{color:C.ink}}>{nameOf(v.patientId)}</div><div className="text-[11px]" style={{color:C.ink2}}>{v.doctorName} · {v.date||"—"} {v.time} · {VISIT_TYPE_LABEL[v.type]||v.type}</div></div>
         <button onClick={onClose}><X size={18} color={C.grey}/></button></div>
       <div className="p-4 space-y-3">
+        <div className="text-[11px]" style={{color:C.ink2}}><span className="font-bold uppercase text-[10px]" style={{color:C.grey}}>Booked by</span> · {v.bookedBy==="relative"?`Relative — ${v.relativeName||"—"}${v.relativeRelation?` (${v.relativeRelation})`:""}`:"Patient"}</div>
         {rescheduleVisit&&<div><div className="text-[10px] font-bold uppercase mb-1.5" style={{color:C.grey}}>Session date &amp; time</div>
           <div className="flex gap-1.5">
             <input type="date" value={edate} onChange={e=>setEdate(e.target.value)} className="flex-1 px-3 py-2 rounded-lg text-[13px] font-semibold outline-none" style={{border:`1px solid ${C.line}`,color:edate?C.ink:C.grey}}/>
