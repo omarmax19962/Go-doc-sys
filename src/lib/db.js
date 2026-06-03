@@ -78,6 +78,11 @@ export const fromVisit = (r) => ({
   soapFiled: !!r.soap_filed,
   packageId: r.package_id || null,
   packageSeq: r.package_seq ?? null,
+  reminder24h: !!r.reminder_24h,
+  reminder8h: !!r.reminder_8h,
+  reminderSameday: !!r.reminder_sameday,
+  rescheduleRequested: !!r.reschedule_requested,
+  rescheduleNote: r.reschedule_note || null,
 })
 export const toVisit = (v) => ({
   patient_id: v.patientId,
@@ -220,6 +225,10 @@ export const fromConfig = (r) => ({
   currency: r.currency,
   noShowConsumesSlot: r.no_show_consumes_slot ?? true,
   packageCreationTiming: r.package_creation_timing || 'post_assessment',
+  tmpl24h: r.tmpl_24h || '',
+  tmpl8h: r.tmpl_8h || '',
+  tmplSameday: r.tmpl_sameday || '',
+  tmplDoctor: r.tmpl_doctor || '',
 })
 export const toConfig = (c) => ({
   default_fee: c.defaultFee,
@@ -227,6 +236,10 @@ export const toConfig = (c) => ({
   currency: c.currency,
   no_show_consumes_slot: c.noShowConsumesSlot ?? true,
   package_creation_timing: c.packageCreationTiming || 'post_assessment',
+  tmpl_24h: c.tmpl24h ?? '',
+  tmpl_8h: c.tmpl8h ?? '',
+  tmpl_sameday: c.tmplSameday ?? '',
+  tmpl_doctor: c.tmplDoctor ?? '',
 })
 
 // ---- NOTIFICATIONS ----

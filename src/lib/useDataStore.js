@@ -441,6 +441,46 @@ export function useDataStore({ role, me }) {
     notify('admin', `Package ended${pack ? `: ${pack.patientName}` : ''}${reason ? ` — ${reason}` : ''} — payment reconciliation due`)
   }, [visits, packages, notify])
 
+  // ---- REMINDERS & RESCHEDULE (§3.4, §5) ----
+  const fillTemplate = (tmpl, { patient, doctor, date, time }) =>
+    (tmpl || '').replace(/{patient}/g, patient || '').replace(/{doctor}/g, doctor || '')
+      .replace(/{date}/g, date || '').replace(/{time}/g, time || '')
+
+  // kind: '24h' | '8h' | 'sameday'. Marks the reminder sent, moves a fresh
+  // session into pending_confirmation, and notifies the patient channel.
+  const sendReminder = useCallback(async (vid, kind) => {
+    const v = visits.find((x) => x.id === vid)
+    if (!v) return
+    const pt = patients.find((p) => p.id === v.patientId)
+    const col = kind === '24h' ? 'reminder_24h' : kind === '8h' ? 'reminder_8h' : 'reminder_sameday'
+    const camel = kind === '24h' ? 'reminder24h' : kind === '8h' ? 'reminder8h' : 'reminderSameday'
+    const patch = { [col]: true }
+    const nextStatus = v.status === 'scheduled' ? 'pending_confirmation' : v.status
+    if (nextStatus !== v.status) patch.status = nextStatus
+    setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, [camel]: true, status: nextStatus } : x))
+    await supabase.from('visits').update(patch).eq('id', vid)
+    const tmpl = kind === '24h' ? config.tmpl24h : kind === '8h' ? config.tmpl8h : config.tmplSameday
+    const msg = fillTemplate(tmpl, { patient: pt?.name, doctor: v.doctorName, date: v.date, time: v.time })
+    notify('admin', `Reminder (${kind}) sent to ${pt?.name || 'patient'}: "${msg}"`)
+  }, [visits, patients, config, notify])
+
+  // Doctor cannot cancel directly — this raises a request to admin (§3.3).
+  const requestReschedule = useCallback(async (vid, note, by) => {
+    setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, rescheduleRequested: true, rescheduleNote: note || null } : x))
+    await supabase.from('visits').update({ reschedule_requested: true, reschedule_note: note || null }).eq('id', vid)
+    const v = visits.find((x) => x.id === vid)
+    const pt = v && patients.find((p) => p.id === v.patientId)
+    notify('admin', `${by || 'Doctor'} requested reschedule/cancel for ${pt?.name || 'a session'}${note ? ` — ${note}` : ''}`)
+  }, [visits, patients, notify])
+
+  // Admin actions a reschedule: clears the request flag (optionally moving the date).
+  const resolveReschedule = useCallback(async (vid, newDate) => {
+    const patch = { reschedule_requested: false, reschedule_note: null }
+    if (newDate) { patch.date = newDate; patch.status = 'rescheduled' }
+    setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, rescheduleRequested: false, rescheduleNote: null, ...(newDate ? { date: newDate, status: 'rescheduled' } : {}) } : x))
+    await supabase.from('visits').update(patch).eq('id', vid)
+  }, [])
+
   return {
     // data
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, config, notifs, packages,
@@ -451,6 +491,7 @@ export function useDataStore({ role, me }) {
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
+    sendReminder, requestReschedule, resolveReschedule,
     setExerciseLib: setExerciseLibPersisted,
     setModalityLib: setModalityLibPersisted,
     notify, markRead,
