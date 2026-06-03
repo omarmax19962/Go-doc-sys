@@ -6,6 +6,9 @@ import {
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { useAuth } from "./lib/useAuth";
+import { useDataStore } from "./lib/useDataStore";
+import Login from "./components/Login";
 
 /* ============================================================================
    Go Doc — Operations System (single-file prototype)
@@ -735,10 +738,6 @@ function NotifBell({items,onOpen,dark}){
 }
 
 /* =============================== APP =============================== */
-import { useAuth } from "./lib/useAuth";
-import { useDataStore } from "./lib/useDataStore";
-import Login from "./components/Login";
-
 export default function App(){
   const { user, profile, role, loading: authLoading, signOut } = useAuth();
   if (authLoading) return <FullScreenLoading label="Loading…" />;

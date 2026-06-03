@@ -1,0 +1,1 @@
+import{t as e}from"./index-Dj2nLz7V.js";async function t({email:t,full_name:n,doctor_id:r}){let{data:i,error:a}=await e.functions.invoke(`invite-doctor`,{body:{email:t,full_name:n,doctor_id:r}});return a?(console.error(`inviteDoctor`,a),{ok:!1,error:a.message||String(a)}):i||{ok:!0}}export{t as inviteDoctor};
