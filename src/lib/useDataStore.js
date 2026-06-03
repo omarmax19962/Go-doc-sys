@@ -154,6 +154,11 @@ export function useDataStore({ role, me }) {
     if (booked) notify('doctor', `New patient booked with you: ${p.name}`, doctor)
   }, [notify])
 
+  const updatePatientFiles = useCallback(async (pid, files) => {
+    setPatients((ps) => ps.map((p) => p.id === pid ? { ...p, files } : p))
+    await supabase.from('patients').update({ files }).eq('id', pid)
+  }, [])
+
   const assignDoctor = useCallback(async (pid, name) => {
     const pt = patients.find((p) => p.id === pid)
     setPatients((ps) => ps.map((p) => p.id === pid ? { ...p, doctor: name } : p))
@@ -324,7 +329,7 @@ export function useDataStore({ role, me }) {
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, config, notifs,
     loading, error,
     // mutations
-    addPatient, assignDoctor, updatePatientStatus, dischargePatient,
+    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, updateVisitStatus, updateConfig,

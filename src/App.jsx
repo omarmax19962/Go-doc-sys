@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   LayoutGrid, Users, ClipboardCheck, Stethoscope, BookOpen, Plus, Search, X, Check,
   ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Pencil, Paperclip, Link2,
@@ -6,6 +6,7 @@ import {
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { supabase } from "./lib/supabase";
 import { useAuth } from "./lib/useAuth";
 import { useDataStore } from "./lib/useDataStore";
 import Login from "./components/Login";
@@ -529,7 +530,64 @@ const ICD_SEED_RAW = [
   {c:"S93.402D",l:"Sprain of unspecified ligament of left ankle, subsequent encounter"},
   {c:"S96.811D",l:"Strain of other specified muscles and tendons at ankle and foot level, right foot, subsequent encounter"},
   {c:"Z47.1",l:"Aftercare following joint replacement surgery"},
-  {c:"Z47.89",l:"Encounter for other orthopedic aftercare"}
+  {c:"Z47.89",l:"Encounter for other orthopedic aftercare"},
+  // ── Expanded neuro (G) — peripheral nerve, movement, headache, pain, paralytic ──
+  {c:"G20.C",l:"Parkinsonism, unspecified"},
+  {c:"G21.4",l:"Vascular parkinsonism"},
+  {c:"G24.8",l:"Other dystonia"},
+  {c:"G24.9",l:"Dystonia, unspecified"},
+  {c:"G25.81",l:"Restless legs syndrome"},
+  {c:"G43.709",l:"Chronic migraine without aura, not intractable, without status migrainosus"},
+  {c:"G43.909",l:"Migraine, unspecified, not intractable, without status migrainosus"},
+  {c:"G44.1",l:"Vascular headache, not elsewhere classified"},
+  {c:"G44.209",l:"Tension-type headache, unspecified, not intractable"},
+  {c:"G44.309",l:"Post-traumatic headache, unspecified, not intractable"},
+  {c:"G47.00",l:"Insomnia, unspecified"},
+  {c:"G54.2",l:"Cervical root disorders, not elsewhere classified"},
+  {c:"G54.4",l:"Lumbosacral root disorders, not elsewhere classified"},
+  {c:"G56.10",l:"Other lesions of median nerve, unspecified upper limb"},
+  {c:"G56.11",l:"Other lesions of median nerve, right upper limb"},
+  {c:"G56.12",l:"Other lesions of median nerve, left upper limb"},
+  {c:"G56.20",l:"Lesion of ulnar nerve, unspecified upper limb"},
+  {c:"G56.21",l:"Lesion of ulnar nerve, right upper limb"},
+  {c:"G56.22",l:"Lesion of ulnar nerve, left upper limb"},
+  {c:"G56.30",l:"Lesion of radial nerve, unspecified upper limb"},
+  {c:"G56.31",l:"Lesion of radial nerve, right upper limb"},
+  {c:"G56.32",l:"Lesion of radial nerve, left upper limb"},
+  {c:"G57.00",l:"Lesion of sciatic nerve, unspecified lower limb"},
+  {c:"G57.01",l:"Lesion of sciatic nerve, right lower limb"},
+  {c:"G57.02",l:"Lesion of sciatic nerve, left lower limb"},
+  {c:"G57.20",l:"Lesion of femoral nerve, unspecified lower limb"},
+  {c:"G57.40",l:"Lesion of medial popliteal nerve, unspecified lower limb"},
+  {c:"G57.60",l:"Lesion of plantar nerve, unspecified lower limb"},
+  {c:"G57.61",l:"Lesion of plantar nerve, right lower limb"},
+  {c:"G57.62",l:"Lesion of plantar nerve, left lower limb"},
+  {c:"G58.7",l:"Mononeuritis multiplex"},
+  {c:"G60.0",l:"Hereditary motor and sensory neuropathy"},
+  {c:"G62.9",l:"Polyneuropathy, unspecified"},
+  {c:"G70.00",l:"Myasthenia gravis without (acute) exacerbation"},
+  {c:"G71.00",l:"Muscular dystrophy, unspecified"},
+  {c:"G72.9",l:"Myopathy, unspecified"},
+  {c:"G81.00",l:"Flaccid hemiplegia affecting unspecified side"},
+  {c:"G81.90",l:"Hemiplegia, unspecified affecting unspecified side"},
+  {c:"G82.21",l:"Paraplegia, complete"},
+  {c:"G82.50",l:"Quadriplegia, unspecified"},
+  {c:"G83.10",l:"Monoplegia of lower limb affecting unspecified side"},
+  {c:"G83.20",l:"Monoplegia of upper limb affecting unspecified side"},
+  {c:"G89.0",l:"Central pain syndrome"},
+  {c:"G89.11",l:"Acute pain due to trauma"},
+  {c:"G89.3",l:"Neoplasm related pain (acute) (chronic)"},
+  {c:"G90.51",l:"Complex regional pain syndrome I of upper limb"},
+  {c:"G90.52",l:"Complex regional pain syndrome I of lower limb"},
+  {c:"G90.59",l:"Complex regional pain syndrome I of other specified site"},
+  {c:"G95.20",l:"Unspecified cord compression"},
+  // ── Expanded MSK (M) — tendon/synovium + newer spondyloarthritis ──
+  {c:"M45.A0",l:"Non-radiographic axial spondyloarthritis of unspecified sites in spine"},
+  {c:"M65.30",l:"Trigger finger, unspecified finger"},
+  {c:"M65.4",l:"Radial styloid tenosynovitis [de Quervain]"},
+  {c:"M67.40",l:"Ganglion, unspecified site"},
+  {c:"M99.01",l:"Segmental and somatic dysfunction of cervical region"},
+  {c:"M99.03",l:"Segmental and somatic dysfunction of lumbar region"}
 ];
 /* Expand the compact {c,l} shape back to {code,label} so the rest of the app reads naturally. */
 const ICD_SEED = ICD_SEED_RAW.map(d => ({ code: d.c, label: d.l }));
@@ -701,6 +759,52 @@ const Field=({label,optional,children})=>(<label className="block">
   <div className="mt-1">{children}</div></label>);
 const inp="w-full px-3 py-2.5 rounded-xl text-[15px] outline-none bg-white";
 
+/* Reusable real-file attachment: uploads to the Supabase Storage "attachments"
+   bucket and stores {name, path}. Legacy string filenames render as plain chips. */
+const fileName=(f)=>typeof f==="string"?f:f.name;
+const filePath=(f)=>typeof f==="string"?null:f.path;
+function FileAttach({files=[],onChange}){
+  const inputRef=useRef(null);
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const pick=()=>inputRef.current&&inputRef.current.click();
+  const onPick=async(e)=>{
+    const file=e.target.files&&e.target.files[0];
+    e.target.value="";
+    if(!file)return;
+    setErr("");setBusy(true);
+    try{
+      const safe=file.name.replace(/[^\w.\-]+/g,"_");
+      const path=`${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safe}`;
+      const {error}=await supabase.storage.from("attachments").upload(path,file);
+      if(error){setErr(error.message||"Upload failed");return;}
+      onChange([...(files||[]),{name:file.name,path}]);
+    }catch(e2){setErr(e2.message||"Upload failed");}
+    finally{setBusy(false);}
+  };
+  const open=async(f)=>{
+    const p=filePath(f);if(!p)return;
+    const {data,error}=await supabase.storage.from("attachments").createSignedUrl(p,3600);
+    if(!error&&data?.signedUrl)window.open(data.signedUrl,"_blank","noopener");
+  };
+  const remove=(i)=>onChange((files||[]).filter((_,idx)=>idx!==i));
+  return(<div>
+    <div className="flex flex-wrap items-center gap-2">
+      {(files||[]).map((f,i)=>{const linkable=!!filePath(f);return(
+        <span key={i} className="flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg" style={{background:"#fff",border:`1px solid ${C.line}`,color:C.ink2}}>
+          <Paperclip size={12}/>
+          {linkable?<button type="button" onClick={()=>open(f)} className="underline decoration-dotted" style={{color:"#2E6E73"}}>{fileName(f)}</button>:<span>{fileName(f)}</span>}
+          <button type="button" onClick={()=>remove(i)} aria-label="Remove" style={{color:C.grey}}><X size={12}/></button>
+        </span>);})}
+      <button type="button" onClick={pick} disabled={busy} className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}>
+        {busy?<><Activity size={14} className="animate-spin"/>Uploading…</>:<><Plus size={14}/>Attach</>}
+      </button>
+      <input ref={inputRef} type="file" className="hidden" onChange={onPick} accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx"/>
+    </div>
+    {err&&<p className="text-[11px] mt-1.5" style={{color:C.red}}>{err}</p>}
+  </div>);
+}
+
 /* ---------- reusable filtration toolkit ---------- */
 const inRange=(d,from,to)=>!d?(!from&&!to):((!from||d>=from)&&(!to||d<=to));
 function FilterBar({children,onClear}){return(<div className="flex flex-wrap items-center gap-2 mb-4 bg-white rounded-2xl px-3 py-2.5" style={{border:`1px solid ${C.line}`}}>
@@ -768,7 +872,7 @@ function AppWithData({ role, me, onSignOut }){
 
   const {
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, config, notifs,
-    addPatient, assignDoctor, updatePatientStatus, dischargePatient,
+    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, updateVisitStatus, updateConfig,
@@ -783,8 +887,8 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updateVisitStatus,updateConfig,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,notifs,markRead}}/>}
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,notifs,markRead}}/>
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
 }
@@ -911,6 +1015,7 @@ function _LegacyMockApp(){
     setDoctors(ds=>ds.map(x=>x.id===id?{...x,zones}:x));
     if(actor==="doctor")notify("admin",`${d?.name||"A doctor"} updated their coverage zones (${zones.length})`);
     else notify("doctor",`Admin updated your coverage zones (${zones.length})`,d?.name);};
+  const updatePatientFiles=(pid,files)=>setPatients(ps=>ps.map(p=>p.id===pid?{...p,files}:p));
   const updateFinance=(id,patch)=>setFinances(fs=>fs.map(f=>f.id===id?{...f,...patch}:f));
   const updateVisitStatus=(vid,status)=>{setVisits(vs=>vs.map(v=>v.id===vid?{...v,status}:v));
     const v=visits.find(x=>x.id===vid);if(v){const pt=patients.find(p=>p.id===v.patientId);
@@ -926,14 +1031,14 @@ function _LegacyMockApp(){
           style={{background:role===r?C.teal:"transparent",color:role===r?C.ink:"#fff",border:`1px solid ${role===r?C.teal:"#445"}`}}>{r}</button>))}
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updateVisitStatus,updateConfig,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,notifs,markRead}}/>}
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,notifs,markRead}}/>
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
 }
 
 /* =============================== ADMIN =============================== */
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updateVisitStatus,updateConfig,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
@@ -1057,7 +1162,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     </div>
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc)=>{addPatient(p,b,d,doc);setIntake(false);}}/>}
-    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} updatePatientStatus={updatePatientStatus}/>}
+    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles}/>}
   </div>);
 }
 
@@ -1253,7 +1358,7 @@ function PainTrend({data,height=170}){
   </AreaChart></ResponsiveContainer>);
 }
 
-function PatientFile({patient,notes,finances,visits,onClose,onDischarge,updatePatientStatus,role="admin"}){
+function PatientFile({patient,notes,finances,visits,onClose,onDischarge,updatePatientStatus,updatePatientFiles,role="admin"}){
   const hist=notes.filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
   const data=hist.map((n,i)=>({s:`S${i+1}`,date:n.date,before:n.painBefore,after:n.painAfter}));
   const sessions=hist.length, startPain=hist[0]?.painBefore??null, endPain=hist.length?hist[hist.length-1].painAfter:null;
@@ -1362,10 +1467,9 @@ function PatientFile({patient,notes,finances,visits,onClose,onDischarge,updatePa
       {/* ============ DOCUMENTS ============ */}
       {mode==="profile"&&sub==="docs"&&<div className="p-6">
         <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-          <div className="flex items-center justify-between mb-3"><h3 className="text-[14px] font-bold" style={{fontFamily:"Georgia,serif"}}>Files & documents</h3>
-            <button onClick={()=>setDocs(d=>[...d,`upload_${d.length+1}.pdf`])} className="flex items-center gap-1.5 text-[13px] font-semibold px-3 py-1.5 rounded-lg" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}><Plus size={14}/>Attach</button></div>
-          {docs.length?<div className="space-y-2">{docs.map(f=><div key={f} className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13px]" style={{background:"#F4F4F2",color:C.ink2}}><Paperclip size={14} color={C.grey}/>{f}</div>)}</div>
-            :<p className="text-[13px]" style={{color:C.grey}}>No documents yet — referral letters, imaging, op notes go here.</p>}
+          <h3 className="text-[14px] font-bold mb-1" style={{fontFamily:"Georgia,serif"}}>Files & documents</h3>
+          <p className="text-[12px] mb-3" style={{color:C.grey}}>Referral letters, imaging, op notes. Tap a file to open it.</p>
+          <FileAttach files={docs} onChange={(next)=>{setDocs(next);updatePatientFiles&&updatePatientFiles(patient.id,next);}}/>
         </div>
       </div>}
 
@@ -1556,8 +1660,7 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
           {!dupPhone&&dupName&&<div className="rounded-xl p-3 flex gap-2 text-[13px]" style={{background:"#FFF8EC",border:`1px solid ${C.amber}66`,color:C.ink2}}><AlertTriangle size={16} color={C.amber} className="shrink-0 mt-0.5"/><div><b style={{color:"#9a6a00"}}>A patient named “{f.name}” already exists.</b> Different phone, so this may be a different person — double-check before continuing.</div></div>}
           <Field label="Complaint"><input value={f.complaint} onChange={e=>set("complaint")(e.target.value)} placeholder="e.g. low back pain" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
           <Field label="Past history" optional><textarea value={f.history} onChange={e=>set("history")(e.target.value)} rows={2} placeholder="Prior surgery, imaging…" className={inp+" resize-none"} style={{border:`1px solid ${C.line}`}}/></Field>
-          <Field label="Files" optional><div className="flex flex-wrap items-center gap-2">{f.files.map(fn=><span key={fn} className="flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg" style={{background:"#fff",border:`1px solid ${C.line}`,color:C.ink2}}><Paperclip size={12}/>{fn}</span>)}
-            <button onClick={()=>set("files")([...f.files,`scan_${f.files.length+1}.pdf`])} className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-lg font-semibold" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}><Plus size={14}/>Attach</button></div></Field>
+          <Field label="Files" optional><FileAttach files={f.files} onChange={set("files")}/></Field>
           <div className="grid grid-cols-2 gap-3"><Field label="Zone (area)"><select value={f.zone} onChange={e=>set("zone")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:f.zone?C.ink:C.grey}}><option value="">Select…</option>{ZONES.map(z=><option key={z}>{z}</option>)}</select></Field>
             <Field label="Map link" optional><div className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white" style={{border:`1px solid ${C.line}`}}><Link2 size={15} color={C.grey}/><input value={f.locUrl} onChange={e=>set("locUrl")(e.target.value)} placeholder="maps.app.goo.gl/…" className="flex-1 outline-none text-[14px]"/></div></Field></div>
           <Field label="Location (written)" optional><input value={f.locText} onChange={e=>set("locText")(e.target.value)} placeholder="Street, building, floor" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
@@ -1582,7 +1685,7 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
 }
 
 /* =============================== DOCTOR =============================== */
-function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,notifs,markRead}){
+function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}){
   const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);
   const mine=visits.filter(v=>v.doctorName===me&&v.status!=="completed");
   const myPatients=patients.filter(p=>p.doctor===me);
@@ -1661,7 +1764,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,submit
             {myPatients.length===0&&<p className="text-[13px]" style={{color:C.grey}}>No patients assigned to you yet.</p>}
           </div>
         </div></div>}
-      {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={[]} visits={visits} role="doctor" onClose={()=>setViewP(null)} onDischarge={()=>{}}/>}
+      {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={[]} visits={visits} role="doctor" onClose={()=>setViewP(null)} onDischarge={()=>{}} updatePatientFiles={updatePatientFiles}/>}
     </>:<Logger ctx={active} notes={notes} exerciseLib={exerciseLib} modalityLib={modalityLib} onBack={()=>setActive(null)} onSubmit={n=>{submitNote(n);setActive(null);}}/>}
   </div>);
 }
