@@ -28,6 +28,8 @@ export const toDoctor = (d) => ({
 export const fromPatient = (r) => ({
   id: r.id,
   name: r.name,
+  age: r.age ?? null,
+  gender: r.gender ?? null,
   phone: r.phone,
   complaint: r.complaint,
   history: r.history,
@@ -44,6 +46,8 @@ export const fromPatient = (r) => ({
 })
 export const toPatient = (p) => ({
   name: p.name,
+  age: p.age === '' || p.age == null ? null : Number(p.age),
+  gender: p.gender || null,
   phone: p.phone,
   complaint: p.complaint,
   history: p.history,

@@ -659,6 +659,7 @@ const COMMON_DX_CODES = [
 const COMMON_DX = COMMON_DX_CODES
   .map(c => ICD.find(d => d.code === c))
   .filter(Boolean);
+const GENDERS = ["Male","Female"];
 const ZONES = [
   // Cairo — central & east
   "Downtown (Wast El Balad)","Garden City","Zamalek","Maadi","Old Maadi","New Maadi","Degla","Manial","Sayeda Zeinab","Abdeen",
@@ -1410,8 +1411,9 @@ function PatientFile({patient,notes,finances,visits,onClose,onDischarge,updatePa
       {mode==="profile"&&sub==="overview"&&<div className="p-6 space-y-4">
         {redFlags.length>0&&<div className="rounded-xl p-3.5 flex gap-2.5" style={{background:"#FDF3F1",border:`1px solid ${C.red}55`}}><AlertTriangle size={17} color={C.red}/><div className="text-[13px]" style={{color:C.ink2}}><b style={{color:C.red}}>{redFlags.length} red flag(s)</b> in history — latest: {redFlags[redFlags.length-1].redFlagNote||"reported"}</div></div>}
         <div className="bg-white rounded-2xl p-5 grid grid-cols-3 gap-y-3 gap-x-4" style={{border:`1px solid ${C.line}`}}>
-          <Info label="Complaint" value={patient.complaint}/><Info label="Assigned doctor" value={patient.doctor}/><Info label="Phone" value={patient.phone}/>
-          <Info label="Zone" value={patient.zone}/><Info label="Location" value={patient.locText}/><Info label="Next visit" value={upcoming[0]?(upcoming[0].date||upcoming[0].time):"none scheduled"}/>
+          <Info label="Complaint" value={patient.complaint}/><Info label="Age" value={patient.age!=null&&patient.age!==""?String(patient.age):"—"}/><Info label="Gender" value={patient.gender||"—"}/>
+          <Info label="Assigned doctor" value={patient.doctor}/><Info label="Phone" value={patient.phone}/><Info label="Zone" value={patient.zone}/>
+          <Info label="Location" value={patient.locText}/><Info label="Next visit" value={upcoming[0]?(upcoming[0].date||upcoming[0].time):"none scheduled"}/>
         </div>
         <div className="grid grid-cols-4 gap-3">
           {[["Sessions",sessions,C.ink],["Start pain",startPain??"–",painColor(startPain||0)],["Now",endPain??"–",painColor(endPain||0)],["Improvement",`${improvePct}%`,C.green]].map(([l,v,c])=>(
@@ -1626,7 +1628,7 @@ function SettingsTab({config,updateConfig}){
 /* ---------- Intake (full field set) ---------- */
 function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
   const[step,setStep]=useState(1);const[q,setQ]=useState("");
-  const[f,setF]=useState({name:"",phone:"",complaint:"",history:"",files:[],zone:"",locText:"",locUrl:"",dx:null});
+  const[f,setF]=useState({name:"",age:"",gender:"",phone:"",complaint:"",history:"",files:[],zone:"",locText:"",locUrl:"",dx:null});
   const[dxOpen,setDxOpen]=useState(false);const[mode,setMode]=useState(null);const[date,setDate]=useState("");const[doctor,setDoctor]=useState(null);
   const set=k=>v=>setF(s=>({...s,[k]:v}));
   const norm=s=>(s||"").toLowerCase().replace(/\s+/g," ").trim();
@@ -1656,6 +1658,8 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
         {step===2&&<div className="space-y-3">
           <div className="grid grid-cols-2 gap-3"><Field label="Name"><input value={f.name} onChange={e=>set("name")(e.target.value)} className={inp} style={{border:`1px solid ${dupName?C.amber:C.line}`}}/></Field>
             <Field label="Phone number"><input value={f.phone} onChange={e=>set("phone")(e.target.value)} className={inp} style={{border:`1px solid ${dupPhone?C.red:C.line}`}}/></Field></div>
+          <div className="grid grid-cols-2 gap-3"><Field label="Age"><input type="number" min="0" max="120" value={f.age} onChange={e=>set("age")(e.target.value)} placeholder="e.g. 34" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+            <Field label="Gender"><select value={f.gender} onChange={e=>set("gender")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:f.gender?C.ink:C.grey}}><option value="">Select…</option>{GENDERS.map(g=><option key={g}>{g}</option>)}</select></Field></div>
           {dupPhone&&<button onClick={()=>onOpenExisting&&onOpenExisting(dupPhone)} className="w-full text-left rounded-xl p-3 flex gap-2 text-[13px]" style={{background:"#FDF3F1",border:`1px solid ${C.red}55`,color:C.ink2}}><AlertTriangle size={16} color={C.red} className="shrink-0 mt-0.5"/><div><b style={{color:C.red}}>This phone already belongs to {dupPhone.name}.</b> Tap to open that record — a new one can’t be created with the same number.</div></button>}
           {!dupPhone&&dupName&&<div className="rounded-xl p-3 flex gap-2 text-[13px]" style={{background:"#FFF8EC",border:`1px solid ${C.amber}66`,color:C.ink2}}><AlertTriangle size={16} color={C.amber} className="shrink-0 mt-0.5"/><div><b style={{color:"#9a6a00"}}>A patient named “{f.name}” already exists.</b> Different phone, so this may be a different person — double-check before continuing.</div></div>}
           <Field label="Complaint"><input value={f.complaint} onChange={e=>set("complaint")(e.target.value)} placeholder="e.g. low back pain" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
@@ -1668,7 +1672,7 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
             <div className="flex items-center justify-between mb-1.5"><span className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Primary diagnosis <span style={{color:C.amber}}>· optional</span></span>{f.dx&&<button onClick={()=>set("dx")(null)} className="text-[12px]" style={{color:C.grey}}>Remove</button>}</div>
             {f.dx?<button onClick={()=>setDxOpen(true)} className="flex items-center gap-2 text-[14px]"><span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{background:"#EAF6F7",color:"#2E6E73"}}>{f.dx.code||"free"}</span>{f.dx.label}</button>
               :<button onClick={()=>setDxOpen(true)} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-semibold" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}><Plus size={15}/>Add — or skip, doctor adds at 1st visit</button>}</div>
-          <button disabled={!f.name||!f.phone||!f.complaint||!!dupPhone} onClick={()=>setStep(3)} className="w-full py-3.5 rounded-xl font-semibold text-white disabled:opacity-40" style={{background:C.ink}}>{dupPhone?"Duplicate phone — resolve above":"Continue"}</button>
+          <button disabled={!f.name||!f.age||!f.gender||!f.phone||!f.complaint||!!dupPhone} onClick={()=>setStep(3)} className="w-full py-3.5 rounded-xl font-semibold text-white disabled:opacity-40" style={{background:C.ink}}>{dupPhone?"Duplicate phone — resolve above":"Continue"}</button>
         </div>}
         {step===3&&<><div className="grid grid-cols-2 gap-3 mb-4">
           <button onClick={()=>setMode("book")} className="p-4 rounded-2xl text-left" style={{background:mode==="book"?"#F4FBFC":"#fff",border:`1.5px solid ${mode==="book"?C.teal:C.line}`}}><Calendar size={20} color={C.green}/><div className="font-bold mt-2">Book 1st visit</div><div className="text-[11px]" style={{color:C.grey}}>Assessment</div></button>
