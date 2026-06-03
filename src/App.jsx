@@ -931,7 +931,7 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,requestReschedule,bookSession,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1082,7 +1082,7 @@ function _LegacyMockApp(){
 }
 
 /* =============================== ADMIN =============================== */
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
@@ -1155,7 +1155,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
       </>}
 
       {/* CALENDAR — operational multi-doctor view (§3.2) */}
-      {tab==="calendar"&&<AdminCalendar visits={visits} patients={patients} doctors={doctors} notes={notes} nameOf={nameOf} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} bookSession={bookSession}/>}
+      {tab==="calendar"&&<AdminCalendar visits={visits} patients={patients} doctors={doctors} notes={notes} nameOf={nameOf} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit} bookSession={bookSession}/>}
 
       {/* PATIENTS — incl. assign-doctor + admin-only payment */}
       {tab==="patients"&&<>
@@ -1403,7 +1403,7 @@ function TimeGridHeader({title,view,setView,step,goToday}){
 
 /* ---------- BookingModal — Calendly-style: book existing or new patient ---------- */
 const DURATIONS=[30,45,60,90];
-function BookingModal({slot,doctors,patients,fixedDoctor,fixedPatient,onClose,onBook}){
+function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onClose,onBook}){
   const[pmode,setPmode]=useState("existing");
   const[q,setQ]=useState("");
   const[picked,setPicked]=useState(fixedPatient||null);
@@ -1412,9 +1412,13 @@ function BookingModal({slot,doctors,patients,fixedDoctor,fixedPatient,onClose,on
   const[date,setDate]=useState(slot?.date||ymd(new Date()));
   const[time,setTime]=useState(slot?.time||"09:00");
   const[duration,setDuration]=useState(45);
-  const[type,setType]=useState("Treatment");
+  const[typeManual,setTypeManual]=useState(null);
   const norm=s=>(s||"").toLowerCase();
   const matches=useMemo(()=>{const t=norm(q);if(t.length<1)return patients.slice(0,6);return patients.filter(p=>norm(p.name).includes(t)||(p.phone||"").includes(q)).slice(0,8);},[q,patients]);
+  // First-time patients (no prior non-cancelled visits) → this is their "1st session", default to Assessment.
+  const priorVisits=useMemo(()=>{const pid=fixedPatient?.id??picked?.id;if(pmode==="new"||!pid)return 0;return(visits||[]).filter(v=>v.patientId===pid&&v.status!=="cancelled").length;},[visits,picked,pmode,fixedPatient]);
+  const isFirst=pmode==="new"||priorVisits===0;
+  const type=typeManual??(isFirst?"Assessment":"Treatment");
   const valid=(pmode==="existing"?!!picked:!!np.name.trim())&&!!doctor&&!!date&&!!time;
   const submit=()=>{if(!valid)return;
     onBook({patientId:pmode==="existing"?picked.id:undefined,newPatient:pmode==="new"?np:undefined,doctorName:doctor,date,time,durationMin:duration,type});
@@ -1422,7 +1426,7 @@ function BookingModal({slot,doctors,patients,fixedDoctor,fixedPatient,onClose,on
   return(<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.5)"}} onClick={onClose}>
     <div className="w-full max-w-[440px] rounded-3xl overflow-hidden" style={{background:C.bg}} onClick={e=>e.stopPropagation()}>
       <div className="px-5 py-4 flex items-center justify-between" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
-        <h2 className="text-[17px] font-bold" style={{fontFamily:"Georgia,serif"}}>Book a session</h2>
+        <h2 className="text-[17px] font-bold" style={{fontFamily:"Georgia,serif"}}>{isFirst?"Book 1st session":"Book a session"}</h2>
         <button onClick={onClose}><X size={20} color={C.grey}/></button></div>
       <div className="p-5 max-h-[72vh] overflow-y-auto space-y-3">
         {!fixedPatient&&<div className="flex gap-1 p-1 rounded-xl" style={{background:"#e7e2d6"}}>
@@ -1448,21 +1452,24 @@ function BookingModal({slot,doctors,patients,fixedDoctor,fixedPatient,onClose,on
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Field label="Duration"><select value={duration} onChange={e=>setDuration(+e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{DURATIONS.map(d=><option key={d} value={d}>{d} min</option>)}</select></Field>
-          <Field label="Type"><select value={type} onChange={e=>setType(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{VISIT_TYPES.map(t=><option key={t} value={t}>{VISIT_TYPE_LABEL[t]}</option>)}</select></Field>
+          <Field label="Type"><select value={type} onChange={e=>setTypeManual(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{VISIT_TYPES.map(t=><option key={t} value={t}>{t==="Assessment"&&isFirst?"1st session (Assessment)":VISIT_TYPE_LABEL[t]}</option>)}</select></Field>
         </div>
         {!fixedDoctor&&<Field label="Doctor"><select value={doctor} onChange={e=>setDoctor(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{doctors.map(d=><option key={d.id}>{d.name}</option>)}</select></Field>}
       </div>
       <div className="px-5 py-4 flex gap-2" style={{background:"#fff",borderTop:`1px solid ${C.line}`}}>
         <button onClick={onClose} className="flex-1 py-2.5 rounded-xl font-semibold text-[14px]" style={{background:C.bg,color:C.ink2,border:`1px solid ${C.line}`}}>Cancel</button>
-        <button onClick={submit} disabled={!valid} className="flex-1 py-2.5 rounded-xl font-bold text-[14px] disabled:opacity-40" style={{background:C.ink,color:"#fff"}}>Book session</button>
+        <button onClick={submit} disabled={!valid} className="flex-1 py-2.5 rounded-xl font-bold text-[14px] disabled:opacity-40" style={{background:C.ink,color:"#fff"}}>{isFirst?"Book 1st session":"Book session"}</button>
       </div>
     </div>
   </div>);
 }
 
 /* ---------- EventPopover — admin click-through actions on a session ---------- */
-function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveReschedule}){
+function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveReschedule,rescheduleVisit}){
   const v=ev.raw;if(!v)return null;
+  const[edate,setEdate]=useState(v.date||"");const[etime,setEtime]=useState(v.time&&v.time!=="—"?v.time:"");const[saved,setSaved]=useState(false);
+  const dirty=(edate||"")!==(v.date||"")||(etime||"")!==((v.time&&v.time!=="—")?v.time:"");
+  const saveDate=async()=>{await rescheduleVisit(v.id,{date:edate||null,time:etime||null});setSaved(true);setTimeout(()=>setSaved(false),1500);};
   const Rem=({on,label,kind})=>(<button onClick={()=>sendReminder(v.id,kind)} className="flex-1 py-1.5 rounded-lg text-[11px] font-bold" style={{background:on?C.teal:C.bg,color:on?"#fff":C.grey,border:`1px solid ${on?C.teal:C.line}`}}>{label}{on?" ✓":""}</button>);
   return(<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.5)"}} onClick={onClose}>
     <div className="w-full max-w-[360px] rounded-2xl overflow-hidden" style={{background:"#fff"}} onClick={e=>e.stopPropagation()}>
@@ -1470,6 +1477,13 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
         <div><div className="text-[15px] font-bold" style={{color:C.ink}}>{nameOf(v.patientId)}</div><div className="text-[11px]" style={{color:C.ink2}}>{v.doctorName} · {v.date||"—"} {v.time} · {VISIT_TYPE_LABEL[v.type]||v.type}</div></div>
         <button onClick={onClose}><X size={18} color={C.grey}/></button></div>
       <div className="p-4 space-y-3">
+        {rescheduleVisit&&<div><div className="text-[10px] font-bold uppercase mb-1.5" style={{color:C.grey}}>Session date &amp; time</div>
+          <div className="flex gap-1.5">
+            <input type="date" value={edate} onChange={e=>setEdate(e.target.value)} className="flex-1 px-3 py-2 rounded-lg text-[13px] font-semibold outline-none" style={{border:`1px solid ${C.line}`,color:edate?C.ink:C.grey}}/>
+            <input type="time" value={etime} onChange={e=>setEtime(e.target.value)} className="px-3 py-2 rounded-lg text-[13px] font-semibold outline-none" style={{border:`1px solid ${C.line}`,color:etime?C.ink:C.grey}}/>
+          </div>
+          <button disabled={!dirty} onClick={saveDate} className="mt-1.5 w-full py-2 rounded-lg text-[12px] font-bold disabled:opacity-40" style={{background:saved?C.green:C.ink,color:"#fff"}}>{saved?"Saved ✓":"Save date"}</button>
+        </div>}
         <div><div className="text-[10px] font-bold uppercase mb-1.5" style={{color:C.grey}}>Status</div>
           <select value={v.status} onChange={e=>{updateVisitStatus(v.id,e.target.value,"admin");onClose();}} className="w-full px-3 py-2 rounded-lg text-[13px] font-semibold outline-none" style={{border:`1px solid ${C.line}`,color:visitStatusColor[v.status]}}>{VISIT_STATUSES.map(s=><option key={s} value={s} style={{color:C.ink}}>{VISIT_STATUS_LABEL[s]}</option>)}</select></div>
         <div><div className="text-[10px] font-bold uppercase mb-1.5" style={{color:C.grey}}>Reminders</div>
@@ -1482,7 +1496,7 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
   </div>);
 }
 
-function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,sendReminder,resolveReschedule,bookSession}){
+function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,sendReminder,resolveReschedule,rescheduleVisit,bookSession}){
   const[fDoc,setFDoc]=useState("");const[fStatus,setFStatus]=useState("");
   const[booking,setBooking]=useState(null);const[popover,setPopover]=useState(null);
   const todayStr=new Date().toISOString().slice(0,10);
@@ -1535,8 +1549,8 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
       onSlotClick={(date,time)=>setBooking({date,time})}
       onEventClick={ev=>setPopover(ev)}/>
 
-    {booking&&<BookingModal slot={booking} doctors={doctors} patients={patients} onClose={()=>setBooking(null)} onBook={onBook}/>}
-    {popover&&<EventPopover ev={popover} nameOf={nameOf} onClose={()=>setPopover(null)} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule}/>}
+    {booking&&<BookingModal slot={booking} doctors={doctors} patients={patients} visits={visits} onClose={()=>setBooking(null)} onBook={onBook}/>}
+    {popover&&<EventPopover ev={popover} nameOf={nameOf} onClose={()=>setPopover(null)} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit}/>}
   </div>);
 }
 
@@ -2076,7 +2090,7 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,onClose,
         </div>
       </div>
 
-      {booking&&<BookingModal slot={{date:today,time:"09:00"}} doctors={doctors} patients={[]} fixedPatient={patient} onClose={()=>setBooking(false)} onBook={async payload=>{await bookSession({...payload,booker:"admin"});}}/>}
+      {booking&&<BookingModal slot={{date:today,time:"09:00"}} doctors={doctors} patients={[]} visits={visits} fixedPatient={patient} onClose={()=>setBooking(false)} onBook={async payload=>{await bookSession({...payload,booker:"admin"});}}/>}
 
       {confirmDel&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={()=>setConfirmDel(false)}>
         <div className="w-full max-w-[400px] rounded-2xl p-6" style={{background:"#fff"}} onClick={e=>e.stopPropagation()}>
@@ -2491,7 +2505,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
           onEventClick={ev=>{const v=ev.raw;const p=pOf(v.patientId);if(p)setViewP(p);}}/>
       </div>}
 
-      {booking&&<BookingModal slot={booking} doctors={doctors} patients={patients} fixedDoctor={me} onClose={()=>setBooking(null)} onBook={async payload=>{await bookSession({...payload,doctorName:me,booker:"doctor"});}}/>}
+      {booking&&<BookingModal slot={booking} doctors={doctors} patients={patients} visits={visits} fixedDoctor={me} onClose={()=>setBooking(null)} onBook={async payload=>{await bookSession({...payload,doctorName:me,booker:"doctor"});}}/>}
 
       {tab==="patients"&&<div className="p-4">{myPatients.length===0&&<p className="text-[13px] text-center mt-6" style={{color:C.grey}}>No patients assigned to you yet.</p>}
         {myPatients.map(p=>{const h=notes.filter(n=>n.patientId===p.id);const last=h.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")).slice(-1)[0];return(
