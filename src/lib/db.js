@@ -241,6 +241,26 @@ export const toExpense = (e) => ({
   note: e.note ? e.note.trim() : null,
 })
 
+// ---- GROWTH MONTHS (manual ledger) ----
+export const fromGrowth = (r) => ({
+  id: r.id,
+  month: r.month,
+  newPatients: r.new_patients ?? 0,
+  moneyIn: Number(r.money_in || 0),
+  moneyOut: Number(r.money_out || 0),
+  marketing: Number(r.marketing || 0),
+  note: r.note || '',
+  createdAt: r.created_at || null,
+})
+export const toGrowth = (g) => ({
+  month: g.month,
+  new_patients: g.newPatients == null || g.newPatients === '' ? 0 : Number(g.newPatients),
+  money_in: g.moneyIn == null || g.moneyIn === '' ? 0 : Number(g.moneyIn),
+  money_out: g.moneyOut == null || g.moneyOut === '' ? 0 : Number(g.moneyOut),
+  marketing: g.marketing == null || g.marketing === '' ? 0 : Number(g.marketing),
+  note: g.note ? g.note.trim() : null,
+})
+
 // ---- CONFIG ----
 export const fromConfig = (r) => ({
   defaultFee: Number(r.default_fee),

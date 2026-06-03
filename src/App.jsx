@@ -913,11 +913,11 @@ function AppWithData({ role, me, onSignOut }){
   if (store.error) return <FullScreenError msg={`Database error: ${store.error}. Check that the schema.sql has been run.`} onSignOut={onSignOut} />;
 
   const {
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, config, notifs, packages,
+    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages,
     addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
-    updateFinance, addExpense, updateExpense, removeExpense, updateVisitStatus, updateConfig,
+    updateFinance, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule, bookSession, rescheduleVisit,
     setExerciseLib, setModalityLib, markRead,
@@ -931,7 +931,7 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,requestReschedule,bookSession,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1082,7 +1082,7 @@ function _LegacyMockApp(){
 }
 
 /* =============================== ADMIN =============================== */
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
@@ -1232,7 +1232,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
       {tab==="doctors"&&<DoctorsTab doctors={doctors} patients={patients} addDoctor={addDoctor} removeDoctor={removeDoctor} updateDoctorSlots={updateDoctorSlots}/>}
 
       {/* FINANCES — mirrors the Sessions Tracker (admin-only) */}
-      {tab==="finances"&&<Finances finances={finances} updateFinance={updateFinance} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} patients={patients} config={config}/>}
+      {tab==="finances"&&<Finances finances={finances} updateFinance={updateFinance} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth} patients={patients} config={config}/>}
 
       {/* LIBRARY — admin adds exercises + modalities */}
       {tab==="library"&&<LibraryTab exerciseLib={exerciseLib} modalityLib={modalityLib} setExerciseLib={setExerciseLib} setModalityLib={setModalityLib}/>}
@@ -1686,14 +1686,14 @@ function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots})
 }
 
 /* ---------- Finances (mirrors the Sessions Tracker · admin-only) ---------- */
-function Finances({finances,updateFinance,expenses=[],addExpense,updateExpense,removeExpense,patients=[],config}){
+function Finances({finances,updateFinance,expenses=[],addExpense,updateExpense,removeExpense,growthMonths=[],addGrowthMonth,updateGrowthMonth,removeGrowthMonth,patients=[],config}){
   const[view,setView]=useState("billing");
   return(<div>
     <div className="flex gap-1 p-1 mb-4 rounded-xl w-fit" style={{background:"#fff",border:`1px solid ${C.line}`}}>
       {[["billing","Billing"],["growth","Growth & CAC"]].map(([k,l])=>(<button key={k} onClick={()=>setView(k)} className="px-4 py-1.5 rounded-lg text-[13px] font-semibold" style={{background:view===k?C.ink:"transparent",color:view===k?"#fff":C.ink2}}>{l}</button>))}
     </div>
     {view==="billing"?<Billing finances={finances} updateFinance={updateFinance}/>
-      :<GrowthCAC finances={finances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} patients={patients}/>}
+      :<GrowthCAC finances={finances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth} patients={patients}/>}
   </div>);
 }
 
@@ -1750,8 +1750,20 @@ function Billing({finances,updateFinance}){
   </>);
 }
 
-/* ---------- Growth & CAC — expenses, monthly P&L, acquisition cohorts ---------- */
-function GrowthCAC({finances,expenses,addExpense,updateExpense,removeExpense,patients}){
+/* ---------- Growth & CAC — auto (derived) + manual ledger ---------- */
+function GrowthCAC({finances,expenses,addExpense,updateExpense,removeExpense,growthMonths,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,patients}){
+  const[mode,setMode]=useState("auto");
+  return(<div>
+    <div className="flex gap-1 p-1 mb-4 rounded-xl w-fit" style={{background:"#fff",border:`1px solid ${C.line}`}}>
+      {[["auto","Automatic"],["manual","Manual"]].map(([k,l])=>(<button key={k} onClick={()=>setMode(k)} className="px-4 py-1.5 rounded-lg text-[13px] font-semibold" style={{background:mode===k?C.teal:"transparent",color:mode===k?C.ink:C.ink2}}>{l}</button>))}
+    </div>
+    {mode==="auto"
+      ?<GrowthAuto finances={finances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} patients={patients}/>
+      :<GrowthManual growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth}/>}
+  </div>);
+}
+
+function GrowthAuto({finances,expenses,addExpense,updateExpense,removeExpense,patients}){
   const thisMonth=ym(new Date().toISOString());
   const[ne,setNe]=useState({month:thisMonth,category:"Marketing",label:"",amount:""});
   const canAdd=ne.month&&ne.amount!==""&&Number(ne.amount)>0;
@@ -1858,6 +1870,79 @@ function GrowthCAC({finances,expenses,addExpense,updateExpense,removeExpense,pat
         <span className="text-right tabular-nums" style={{color:C.grey}}>{egp(c.patients?c.rev/c.patients:0)}</span>
       </div>))}
     </div>
+  </div>);
+}
+
+/* ---------- manual growth & CAC ledger ---------- */
+function GrowthManual({growthMonths,addGrowthMonth,updateGrowthMonth,removeGrowthMonth}){
+  const thisMonth=ym(new Date().toISOString());
+  const[ne,setNe]=useState({month:thisMonth,newPatients:"",moneyIn:"",moneyOut:"",marketing:"",note:""});
+  const canAdd=ne.month&&!growthMonths.some(g=>g.month===ne.month);
+  const submit=()=>{if(!canAdd||!addGrowthMonth)return;addGrowthMonth({month:ne.month,newPatients:ne.newPatients,moneyIn:ne.moneyIn,moneyOut:ne.moneyOut,marketing:ne.marketing,note:ne.note});setNe({month:thisMonth,newPatients:"",moneyIn:"",moneyOut:"",marketing:"",note:""});};
+
+  const rows=useMemo(()=>growthMonths.slice().sort((a,b)=>(b.month||"").localeCompare(a.month||"")).map(g=>{
+    const cac=g.newPatients?g.marketing/g.newPatients:0;
+    const net=g.moneyIn-g.moneyOut;
+    return{...g,cac,net};
+  }),[growthMonths]);
+
+  const totPts=rows.reduce((a,r)=>a+(r.newPatients||0),0);
+  const totIn=rows.reduce((a,r)=>a+(r.moneyIn||0),0);
+  const totOut=rows.reduce((a,r)=>a+(r.moneyOut||0),0);
+  const totMkt=rows.reduce((a,r)=>a+(r.marketing||0),0);
+  const totNet=totIn-totOut;
+  const cards=[["New patients",totPts,"#2E6E73"],["Total money in",egp(totIn),C.ink],["Total money out",egp(totOut),C.red],["Blended CAC",totPts?egp(totMkt/totPts):"—",C.amber],["Total net income",egp(totNet),totNet>=0?C.green:C.red]];
+
+  const cols="100px 80px 1fr 1fr 1fr 90px 1fr 36px";
+
+  return(<div>
+    <div className="grid grid-cols-5 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
+
+    {/* entry */}
+    <div className="bg-white rounded-2xl p-5 mb-4" style={{border:`1px solid ${C.line}`}}>
+      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:"Georgia,serif"}}><Plus size={15} color={C.ink}/>Add a month</h3>
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Month"><input type="month" value={ne.month} onChange={e=>setNe(s=>({...s,month:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+        <Field label="New patients"><input type="number" min="0" value={ne.newPatients} onChange={e=>setNe(s=>({...s,newPatients:e.target.value}))} placeholder="0" className={inp} style={{border:`1px solid ${C.line}`,width:"110px"}}/></Field>
+        <Field label="Money in (EGP)"><input type="number" min="0" value={ne.moneyIn} onChange={e=>setNe(s=>({...s,moneyIn:e.target.value}))} placeholder="0" className={inp} style={{border:`1px solid ${C.line}`,width:"130px"}}/></Field>
+        <Field label="Money out (EGP)"><input type="number" min="0" value={ne.moneyOut} onChange={e=>setNe(s=>({...s,moneyOut:e.target.value}))} placeholder="0" className={inp} style={{border:`1px solid ${C.line}`,width:"130px"}}/></Field>
+        <Field label="Marketing (EGP)"><input type="number" min="0" value={ne.marketing} onChange={e=>setNe(s=>({...s,marketing:e.target.value}))} placeholder="0" className={inp} style={{border:`1px solid ${C.line}`,width:"130px"}}/></Field>
+        <Field label="Note" optional><input value={ne.note} onChange={e=>setNe(s=>({...s,note:e.target.value}))} placeholder="optional" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+        <button disabled={!canAdd} onClick={submit} className="px-4 py-2.5 rounded-xl font-semibold text-white text-[14px] disabled:opacity-40" style={{background:C.ink}}>Add</button>
+      </div>
+      {ne.month&&growthMonths.some(g=>g.month===ne.month)&&<p className="text-[11px] mt-2" style={{color:C.amber}}>That month already exists below — edit it inline instead.</p>}
+    </div>
+
+    {/* ledger */}
+    <div className="bg-white rounded-2xl overflow-x-auto" style={{border:`1px solid ${C.line}`}}>
+      <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider grid gap-2 items-center" style={{color:C.grey,background:"#F4F4F2",gridTemplateColumns:cols,minWidth:"820px"}}>
+        <span>Month</span><span className="text-right">Patients</span><span className="text-right">Money in</span><span className="text-right">Money out</span><span className="text-right">Marketing</span><span className="text-right">CAC</span><span className="text-right">Net income</span><span/></div>
+      {rows.length===0&&<div className="px-4 py-4 text-[13px]" style={{color:C.grey}}>No months logged yet.</div>}
+      {rows.map((r,i)=>{
+        const ed=(field)=>e=>{const raw=e.target.value;updateGrowthMonth(r.id,{[field]:raw===""?0:Number(raw)});};
+        const cell="text-right tabular-nums w-full bg-transparent outline-none px-1.5 py-1 rounded focus:bg-white";
+        return(<div key={r.id} className="px-4 py-2 grid gap-2 items-center text-[13px]" style={{borderTop:i?`1px solid ${C.line}`:"none",gridTemplateColumns:cols,minWidth:"820px"}}>
+          <span className="font-semibold">{monthLabel(r.month)}</span>
+          <input type="number" min="0" defaultValue={r.newPatients} onBlur={ed("newPatients")} className={cell} style={{border:`1px solid ${C.line}`}}/>
+          <input type="number" min="0" defaultValue={r.moneyIn} onBlur={ed("moneyIn")} className={cell} style={{border:`1px solid ${C.line}`}}/>
+          <input type="number" min="0" defaultValue={r.moneyOut} onBlur={ed("moneyOut")} className={cell} style={{border:`1px solid ${C.line}`}}/>
+          <input type="number" min="0" defaultValue={r.marketing} onBlur={ed("marketing")} className={cell} style={{border:`1px solid ${C.line}`}}/>
+          <span className="text-right tabular-nums font-semibold" style={{color:C.amber}}>{r.newPatients&&r.marketing?egp(r.cac):"—"}</span>
+          <span className="text-right tabular-nums font-bold" style={{color:r.net>=0?C.green:C.red}}>{egp(r.net)}</span>
+          {removeGrowthMonth&&<button onClick={()=>removeGrowthMonth(r.id)} title="Remove month"><Trash2 size={15} color={C.grey}/></button>}
+        </div>);})}
+      {rows.length>0&&<div className="px-4 py-3 grid gap-2 items-center text-[13px]" style={{borderTop:`2px solid ${C.ink}`,gridTemplateColumns:cols,minWidth:"820px",background:"#F4F4F2"}}>
+        <span className="font-bold uppercase text-[11px] tracking-wider" style={{color:C.ink}}>Total</span>
+        <span className="text-right tabular-nums font-bold pr-1.5">{totPts}</span>
+        <span className="text-right tabular-nums font-bold pr-1.5">{egp(totIn)}</span>
+        <span className="text-right tabular-nums font-bold pr-1.5" style={{color:C.red}}>{egp(totOut)}</span>
+        <span className="text-right tabular-nums font-bold pr-1.5" style={{color:C.red}}>{egp(totMkt)}</span>
+        <span className="text-right tabular-nums font-bold" style={{color:C.amber}}>{totPts?egp(totMkt/totPts):"—"}</span>
+        <span className="text-right tabular-nums font-bold text-[15px]" style={{color:totNet>=0?C.green:C.red}}>{egp(totNet)}</span>
+        <span/>
+      </div>}
+    </div>
+    <p className="text-[11px] mt-3 flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Fully manual — every number is what you type. CAC = marketing ÷ new patients. Net income = money in − money out. Click any cell to edit; changes save when you tab out.</p>
   </div>);
 }
 

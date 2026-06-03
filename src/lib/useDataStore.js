@@ -9,6 +9,7 @@ import {
   fromModality, toModality,
   fromFinance, toFinance,
   fromExpense, toExpense,
+  fromGrowth, toGrowth,
   fromConfig, toConfig,
   fromPackage, toPackage,
   fromNotif,
@@ -30,6 +31,7 @@ export function useDataStore({ role, me }) {
   const [modalityLib, setModalityLib] = useState([])
   const [finances, setFinances] = useState([])
   const [expenses, setExpenses] = useState([])
+  const [growthMonths, setGrowthMonths] = useState([])
   const [packages, setPackages] = useState([])
   const [config, setConfigState] = useState({ defaultFee: 500, defaultPct: 0.6, currency: 'EGP', noShowConsumesSlot: true, packageCreationTiming: 'post_assessment' })
   const [notifs, setNotifs] = useState([])
@@ -42,7 +44,7 @@ export function useDataStore({ role, me }) {
   const loadAll = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp] = await Promise.all([
+      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm] = await Promise.all([
         supabase.from('doctors').select('*').order('id'),
         supabase.from('patients').select('*').order('id'),
         supabase.from('visits').select('*').order('id'),
@@ -54,6 +56,7 @@ export function useDataStore({ role, me }) {
         supabase.from('notifications').select('*').order('ts', { ascending: false }).limit(50),
         supabase.from('packages').select('*').order('id'),
         supabase.from('expenses').select('*').order('id'),
+        supabase.from('growth_months').select('*').order('month'),
       ])
       if (d.error) throw d.error
       setDoctors((d.data || []).map(fromDoctor))
@@ -67,6 +70,7 @@ export function useDataStore({ role, me }) {
       setNotifs((notes_n.data || []).map(fromNotif))
       setPackages((pk.data || []).map(fromPackage))
       setExpenses((exp.data || []).map(fromExpense))
+      setGrowthMonths((gm.data || []).map(fromGrowth))
     } catch (e) {
       console.error('[useDataStore] load failed', e)
       setError(e.message || String(e))
@@ -95,6 +99,9 @@ export function useDataStore({ role, me }) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
         supabase.from('expenses').select('*').order('id').then(({ data }) => setExpenses((data || []).map(fromExpense)))
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'growth_months' }, () => {
+        supabase.from('growth_months').select('*').order('month').then(({ data }) => setGrowthMonths((data || []).map(fromGrowth)))
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
@@ -371,6 +378,31 @@ export function useDataStore({ role, me }) {
     await supabase.from('expenses').delete().eq('id', id)
   }, [])
 
+  // ---- GROWTH MONTHS (manual P&L / CAC ledger) ----
+  const addGrowthMonth = useCallback(async (g) => {
+    const { data, error } = await supabase.from('growth_months').upsert(toGrowth(g), { onConflict: 'month' }).select().single()
+    if (error) { console.error('addGrowthMonth', error); return }
+    const row = fromGrowth(data)
+    setGrowthMonths((gs) => [...gs.filter((x) => x.month !== row.month), row].sort((a, b) => (a.month || '').localeCompare(b.month || '')))
+  }, [])
+
+  const updateGrowthMonth = useCallback(async (id, patch) => {
+    setGrowthMonths((gs) => gs.map((x) => x.id === id ? { ...x, ...patch } : x))
+    const clean = {}
+    if ('month' in patch) clean.month = patch.month
+    if ('newPatients' in patch) clean.new_patients = patch.newPatients === '' || patch.newPatients == null ? 0 : Number(patch.newPatients)
+    if ('moneyIn' in patch) clean.money_in = patch.moneyIn === '' || patch.moneyIn == null ? 0 : Number(patch.moneyIn)
+    if ('moneyOut' in patch) clean.money_out = patch.moneyOut === '' || patch.moneyOut == null ? 0 : Number(patch.moneyOut)
+    if ('marketing' in patch) clean.marketing = patch.marketing === '' || patch.marketing == null ? 0 : Number(patch.marketing)
+    if ('note' in patch) clean.note = patch.note ? patch.note.trim() : null
+    await supabase.from('growth_months').update(clean).eq('id', id)
+  }, [])
+
+  const removeGrowthMonth = useCallback(async (id) => {
+    setGrowthMonths((gs) => gs.filter((x) => x.id !== id))
+    await supabase.from('growth_months').delete().eq('id', id)
+  }, [])
+
   const updateVisitStatus = useCallback(async (vid, status, by = null) => {
     const patch = { status }
     if (status === 'cancelled') patch.cancelled_by = by || 'admin'
@@ -554,13 +586,13 @@ export function useDataStore({ role, me }) {
 
   return {
     // data
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, config, notifs, packages,
+    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages,
     loading, error,
     // mutations
     addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
-    updateFinance, addExpense, updateExpense, removeExpense, updateVisitStatus, updateConfig,
+    updateFinance, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,
     bookSession, rescheduleVisit,
