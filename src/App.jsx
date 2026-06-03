@@ -681,6 +681,9 @@ const PAY_STATUS = ["Paid","Pending","Partial","Waived"];
 const PAY_METHOD = ["Cash","Instapay","Vodafone Cash","Bank Transfer","Other"];
 const payColor = {Paid:C.green,Pending:C.amber,Partial:"#D9714E",Waived:C.grey};
 const egp = n => `${Math.round(n||0).toLocaleString()} EGP`;
+const EXPENSE_CATS = ["Marketing","Rent","Salaries","Equipment","Utilities","Software","Other"];
+const ym = s => (s||"").slice(0,7);
+const monthLabel = m => { if(!m)return"—"; const [y,mo]=m.split("-"); return `${MONTHS[(+mo||1)-1].slice(0,3)} ${y}`; };
 
 const painColor=(n)=>n<=2?C.green:n<=4?"#8FB339":n<=6?C.amber:n<=8?"#D9714E":C.red;
 const respColor={better:C.green,same:C.grey,mixed:C.amber,worse:C.red};
@@ -1229,7 +1232,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
       {tab==="doctors"&&<DoctorsTab doctors={doctors} patients={patients} addDoctor={addDoctor} removeDoctor={removeDoctor} updateDoctorSlots={updateDoctorSlots}/>}
 
       {/* FINANCES — mirrors the Sessions Tracker (admin-only) */}
-      {tab==="finances"&&<Finances finances={finances} updateFinance={updateFinance}/>}
+      {tab==="finances"&&<Finances finances={finances} updateFinance={updateFinance} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} patients={patients} config={config}/>}
 
       {/* LIBRARY — admin adds exercises + modalities */}
       {tab==="library"&&<LibraryTab exerciseLib={exerciseLib} modalityLib={modalityLib} setExerciseLib={setExerciseLib} setModalityLib={setModalityLib}/>}
@@ -1683,7 +1686,18 @@ function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots})
 }
 
 /* ---------- Finances (mirrors the Sessions Tracker · admin-only) ---------- */
-function Finances({finances,updateFinance}){
+function Finances({finances,updateFinance,expenses=[],addExpense,updateExpense,removeExpense,patients=[],config}){
+  const[view,setView]=useState("billing");
+  return(<div>
+    <div className="flex gap-1 p-1 mb-4 rounded-xl w-fit" style={{background:"#fff",border:`1px solid ${C.line}`}}>
+      {[["billing","Billing"],["growth","Growth & CAC"]].map(([k,l])=>(<button key={k} onClick={()=>setView(k)} className="px-4 py-1.5 rounded-lg text-[13px] font-semibold" style={{background:view===k?C.ink:"transparent",color:view===k?"#fff":C.ink2}}>{l}</button>))}
+    </div>
+    {view==="billing"?<Billing finances={finances} updateFinance={updateFinance}/>
+      :<GrowthCAC finances={finances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} patients={patients}/>}
+  </div>);
+}
+
+function Billing({finances,updateFinance}){
   const[f,setF]=useState({from:"",to:"",doctor:"",status:"",method:""});
   const docOpts=[...new Set(finances.map(x=>x.doctor))];
   const src=finances.filter(x=>(!(f.from||f.to)||inRange(x.date,f.from,f.to))&&(!f.doctor||x.doctor===f.doctor)&&(!f.status||x.status===f.status)&&(!f.method||x.method===f.method));
@@ -1734,6 +1748,109 @@ function Finances({finances,updateFinance}){
     </div>
     <p className="text-[11px] mt-3 flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Fee + Doctor % are the only inputs per row (defaults 500 EGP · 60%). Doctor earning, Go Doc %, Go Doc earning and all totals auto-calc — exactly like your tracker. Every logged session drops in here automatically. Admin-only.</p>
   </>);
+}
+
+/* ---------- Growth & CAC — expenses, monthly P&L, acquisition cohorts ---------- */
+function GrowthCAC({finances,expenses,addExpense,updateExpense,removeExpense,patients}){
+  const thisMonth=ym(new Date().toISOString());
+  const[ne,setNe]=useState({month:thisMonth,category:"Marketing",label:"",amount:""});
+  const canAdd=ne.month&&ne.amount!==""&&Number(ne.amount)>0;
+  const submit=()=>{if(!canAdd||!addExpense)return;addExpense({month:ne.month,category:ne.category,label:ne.label,amount:Number(ne.amount)});setNe({month:ne.month,category:ne.category,label:"",amount:""});};
+
+  // revenue by patient name (fees), and Go Doc margin
+  const revByPatient=useMemo(()=>{const m={};finances.forEach(x=>{const k=x.patient||"";if(!m[k])m[k]={fee:0,go:0};m[k].fee+=x.fee;m[k].go+=x.fee*(1-x.pct);});return m;},[finances]);
+
+  // all relevant months: from patients (acquisition), finances (billing), expenses
+  const months=useMemo(()=>{const s=new Set();patients.forEach(p=>{if(p.createdAt)s.add(ym(p.createdAt));});finances.forEach(x=>{if(x.date)s.add(ym(x.date));});expenses.forEach(e=>{if(e.month)s.add(e.month);});return[...s].filter(Boolean).sort().reverse();},[patients,finances,expenses]);
+
+  const rows=useMemo(()=>months.map(m=>{
+    const cohort=patients.filter(p=>ym(p.createdAt)===m);
+    const newPts=cohort.length;
+    const marketing=expenses.filter(e=>e.month===m&&e.category==="Marketing").reduce((a,e)=>a+e.amount,0);
+    const allExp=expenses.filter(e=>e.month===m).reduce((a,e)=>a+e.amount,0);
+    const billedRev=finances.filter(x=>ym(x.date)===m).reduce((a,x)=>a+x.fee,0);
+    const billedGo=finances.filter(x=>ym(x.date)===m).reduce((a,x)=>a+x.fee*(1-x.pct),0);
+    const lifetimeRev=cohort.reduce((a,p)=>a+(revByPatient[p.name]?.fee||0),0);
+    const lifetimeGo=cohort.reduce((a,p)=>a+(revByPatient[p.name]?.go||0),0);
+    const sameMonthRev=cohort.reduce((a,p)=>{const my=finances.filter(x=>x.patient===p.name&&ym(x.date)===m);return a+my.reduce((b,x)=>b+x.fee,0);},0);
+    const cac=newPts?marketing/newPts:0;
+    return{m,newPts,marketing,allExp,billedRev,billedGo,net:billedGo-allExp,lifetimeRev,lifetimeGo,sameMonthRev,cac,brokeEven:marketing>0?lifetimeGo>=marketing:null};
+  }),[months,patients,expenses,finances,revByPatient]);
+
+  // per-campaign (source) breakdown — revenue side
+  const campaigns=useMemo(()=>{const m={};patients.forEach(p=>{const k=(p.source||"").trim()||"(unattributed)";if(!m[k])m[k]={source:k,patients:0,rev:0,go:0};m[k].patients++;m[k].rev+=revByPatient[p.name]?.fee||0;m[k].go+=revByPatient[p.name]?.go||0;});return Object.values(m).sort((a,b)=>b.rev-a.rev);},[patients,revByPatient]);
+
+  const totMkt=rows.reduce((a,r)=>a+r.marketing,0),totNew=rows.reduce((a,r)=>a+r.newPts,0);
+  const cards=[["Total marketing spend",egp(totMkt),C.ink],["New patients",totNew,"#2E6E73"],["Blended CAC",totNew?egp(totMkt/totNew):"—",C.amber],["Total operating expenses",egp(rows.reduce((a,r)=>a+r.allExp,0)),C.red]];
+
+  return(<div>
+    <div className="grid grid-cols-4 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
+
+    {/* expense entry + list */}
+    <div className="bg-white rounded-2xl p-5 mb-4" style={{border:`1px solid ${C.line}`}}>
+      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:"Georgia,serif"}}><TrendingDown size={15} color={C.red}/>Operating expenses</h3>
+      <div className="flex flex-wrap items-end gap-2 mb-4">
+        <Field label="Month"><input type="month" value={ne.month} onChange={e=>setNe(s=>({...s,month:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+        <Field label="Category"><select value={ne.category} onChange={e=>setNe(s=>({...s,category:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`}}>{EXPENSE_CATS.map(c=><option key={c}>{c}</option>)}</select></Field>
+        <Field label="Label / campaign" optional><input value={ne.label} onChange={e=>setNe(s=>({...s,label:e.target.value}))} placeholder="e.g. Instagram boost" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+        <Field label="Amount (EGP)"><input type="number" min="0" value={ne.amount} onChange={e=>setNe(s=>({...s,amount:e.target.value}))} placeholder="0" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+        <button disabled={!canAdd} onClick={submit} className="px-4 py-2.5 rounded-xl font-semibold text-white text-[14px] disabled:opacity-40" style={{background:C.ink}}>Add</button>
+      </div>
+      {expenses.length===0?<p className="text-[12px]" style={{color:C.grey}}>No expenses logged yet.</p>
+        :<div className="space-y-1.5">{expenses.slice().sort((a,b)=>(b.month||"").localeCompare(a.month||"")).map(e=>(
+          <div key={e.id} className="flex items-center gap-3 px-3 py-2 rounded-xl text-[13px]" style={{background:C.bg}}>
+            <span className="font-semibold w-20 shrink-0">{monthLabel(e.month)}</span>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{background:e.category==="Marketing"?C.teal+"33":"#E7E2D6",color:C.ink2}}>{e.category}</span>
+            <span className="flex-1 truncate" style={{color:C.ink2}}>{e.label||"—"}</span>
+            <span className="tabular-nums font-semibold">{egp(e.amount)}</span>
+            {removeExpense&&<button onClick={()=>removeExpense(e.id)} title="Remove"><Trash2 size={15} color={C.grey}/></button>}
+          </div>))}</div>}
+    </div>
+
+    {/* monthly P&L */}
+    <div className="bg-white rounded-2xl overflow-x-auto mb-4" style={{border:`1px solid ${C.line}`}}>
+      <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider grid gap-2 items-center" style={{color:C.grey,background:"#F4F4F2",gridTemplateColumns:"110px 1fr 1fr 1fr 1fr",minWidth:"640px"}}>
+        <span>Month</span><span className="text-right">Revenue billed</span><span className="text-right">Go Doc earnings</span><span className="text-right">Expenses</span><span className="text-right">Net profit</span></div>
+      {rows.length===0&&<div className="px-4 py-4 text-[13px]" style={{color:C.grey}}>No data yet.</div>}
+      {rows.map((r,i)=>(<div key={r.m} className="px-4 py-2.5 grid gap-2 items-center text-[13px]" style={{borderTop:i?`1px solid ${C.line}`:"none",gridTemplateColumns:"110px 1fr 1fr 1fr 1fr",minWidth:"640px"}}>
+        <span className="font-semibold">{monthLabel(r.m)}</span>
+        <span className="text-right tabular-nums">{egp(r.billedRev)}</span>
+        <span className="text-right tabular-nums" style={{color:"#2E6E73"}}>{egp(r.billedGo)}</span>
+        <span className="text-right tabular-nums" style={{color:C.red}}>{r.allExp?egp(r.allExp):"—"}</span>
+        <span className="text-right tabular-nums font-bold" style={{color:r.net>=0?C.green:C.red}}>{egp(r.net)}</span>
+      </div>))}
+    </div>
+
+    {/* acquisition cohorts & CAC */}
+    <div className="bg-white rounded-2xl overflow-x-auto mb-2" style={{border:`1px solid ${C.line}`}}>
+      <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider grid gap-2 items-center" style={{color:C.grey,background:"#F4F4F2",gridTemplateColumns:"100px 70px 1fr 90px 1fr 1fr 96px",minWidth:"760px"}}>
+        <span>Cohort</span><span className="text-right">New pts</span><span className="text-right">Marketing</span><span className="text-right">CAC</span><span className="text-right">Same-mo rev</span><span className="text-right">Lifetime rev</span><span className="text-center">Break-even</span></div>
+      {rows.map((r,i)=>(<div key={r.m} className="px-4 py-2.5 grid gap-2 items-center text-[13px]" style={{borderTop:i?`1px solid ${C.line}`:"none",gridTemplateColumns:"100px 70px 1fr 90px 1fr 1fr 96px",minWidth:"760px"}}>
+        <span className="font-semibold">{monthLabel(r.m)}</span>
+        <span className="text-right tabular-nums">{r.newPts}</span>
+        <span className="text-right tabular-nums" style={{color:C.red}}>{r.marketing?egp(r.marketing):"—"}</span>
+        <span className="text-right tabular-nums font-semibold" style={{color:C.amber}}>{r.newPts&&r.marketing?egp(r.cac):"—"}</span>
+        <span className="text-right tabular-nums">{egp(r.sameMonthRev)}</span>
+        <span className="text-right tabular-nums" style={{color:"#2E6E73"}}>{egp(r.lifetimeRev)}</span>
+        <span className="text-center">{r.brokeEven===null?<span style={{color:C.grey}}>—</span>:<span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:(r.brokeEven?C.green:C.red)+"22",color:r.brokeEven?C.green:C.red}}>{r.brokeEven?"Yes":"No"}</span>}</span>
+      </div>))}
+    </div>
+    <p className="text-[11px] mb-4 flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Cohort = patients acquired that month (by intake date). CAC = marketing spend ÷ new patients. Break-even compares the cohort's lifetime Go Doc earnings against that month's marketing spend.</p>
+
+    {/* per-campaign */}
+    <div className="bg-white rounded-2xl overflow-x-auto" style={{border:`1px solid ${C.line}`}}>
+      <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider grid gap-2 items-center" style={{color:C.grey,background:"#F4F4F2",gridTemplateColumns:"1fr 80px 1fr 1fr 1fr",minWidth:"560px"}}>
+        <span>Source / campaign</span><span className="text-right">Patients</span><span className="text-right">Lifetime rev</span><span className="text-right">Go Doc earn</span><span className="text-right">Rev / patient</span></div>
+      {campaigns.length===0&&<div className="px-4 py-4 text-[13px]" style={{color:C.grey}}>No patients yet.</div>}
+      {campaigns.map((c,i)=>(<div key={c.source} className="px-4 py-2.5 grid gap-2 items-center text-[13px]" style={{borderTop:i?`1px solid ${C.line}`:"none",gridTemplateColumns:"1fr 80px 1fr 1fr 1fr",minWidth:"560px"}}>
+        <span className="font-semibold truncate">{c.source}</span>
+        <span className="text-right tabular-nums">{c.patients}</span>
+        <span className="text-right tabular-nums">{egp(c.rev)}</span>
+        <span className="text-right tabular-nums" style={{color:"#2E6E73"}}>{egp(c.go)}</span>
+        <span className="text-right tabular-nums" style={{color:C.grey}}>{egp(c.patients?c.rev/c.patients:0)}</span>
+      </div>))}
+    </div>
+  </div>);
 }
 
 /* ---------- patient status menu (admin only) ---------- */
@@ -2100,7 +2217,7 @@ function SettingsTab({config,updateConfig}){
 /* ---------- Intake (full field set) ---------- */
 function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
   const[step,setStep]=useState(1);const[q,setQ]=useState("");
-  const[f,setF]=useState({name:"",age:"",gender:"",phone:"",complaint:"",history:"",files:[],zone:"",locText:"",locUrl:"",dx:null});
+  const[f,setF]=useState({name:"",age:"",gender:"",phone:"",complaint:"",history:"",files:[],zone:"",locText:"",locUrl:"",source:"",dx:null});
   const[dxOpen,setDxOpen]=useState(false);const[mode,setMode]=useState(null);const[date,setDate]=useState("");const[doctor,setDoctor]=useState(null);
   const set=k=>v=>setF(s=>({...s,[k]:v}));
   const norm=s=>(s||"").toLowerCase().replace(/\s+/g," ").trim();
@@ -2140,6 +2257,7 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
           <div className="grid grid-cols-2 gap-3"><Field label="Zone (area)"><select value={f.zone} onChange={e=>set("zone")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:f.zone?C.ink:C.grey}}><option value="">Select…</option>{ZONES.map(z=><option key={z}>{z}</option>)}</select></Field>
             <Field label="Map link" optional><div className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white" style={{border:`1px solid ${C.line}`}}><Link2 size={15} color={C.grey}/><input value={f.locUrl} onChange={e=>set("locUrl")(e.target.value)} placeholder="maps.app.goo.gl/…" className="flex-1 outline-none text-[14px]"/></div></Field></div>
           <Field label="Location (written)" optional><input value={f.locText} onChange={e=>set("locText")(e.target.value)} placeholder="Street, building, floor" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+          <Field label="Acquisition source / campaign" optional><input value={f.source} onChange={e=>set("source")(e.target.value)} placeholder="e.g. Instagram Oct, referral, Google Ads" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
           <div className="bg-white rounded-xl p-3" style={{border:`1px solid ${f.dx?C.teal:C.line}`}}>
             <div className="flex items-center justify-between mb-1.5"><span className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Primary diagnosis <span style={{color:C.amber}}>· optional</span></span>{f.dx&&<button onClick={()=>set("dx")(null)} className="text-[12px]" style={{color:C.grey}}>Remove</button>}</div>
             {f.dx?<button onClick={()=>setDxOpen(true)} className="flex items-center gap-2 text-[14px]"><span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{background:"#EAF6F7",color:"#2E6E73"}}>{f.dx.code||"free"}</span>{f.dx.label}</button>
