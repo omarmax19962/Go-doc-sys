@@ -87,6 +87,8 @@ export const fromVisit = (r) => ({
   reminderSameday: !!r.reminder_sameday,
   rescheduleRequested: !!r.reschedule_requested,
   rescheduleNote: r.reschedule_note || null,
+  reschedulePrefFrom: r.reschedule_pref_from || null,
+  reschedulePrefTo: r.reschedule_pref_to || null,
   bookedBy: r.booked_by || 'patient',
   relativeName: r.relative_name || null,
   relativeRelation: r.relative_relation || null,

@@ -1590,7 +1590,8 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
           <div className="flex gap-1.5"><Rem on={v.reminder24h} label="24h" kind="24h"/><Rem on={v.reminder8h} label="8h" kind="8h"/><Rem on={v.reminderSameday} label="Same-day" kind="sameday"/></div></div>
         {v.rescheduleRequested&&<div className="rounded-lg p-2.5" style={{background:"#F3EEF8"}}>
           <div className="text-[11px] font-bold" style={{color:"#9B7BB8"}}>Reschedule requested{v.rescheduleNote?` — "${v.rescheduleNote}"`:""}</div>
-          <button onClick={()=>{const d=prompt("New date (YYYY-MM-DD), or blank to clear the request:",v.date||"");resolveReschedule(v.id,d||null);onClose();}} className="mt-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold" style={{background:C.ink,color:"#fff"}}>Action it</button></div>}
+          {(v.reschedulePrefFrom||v.reschedulePrefTo)&&<div className="text-[10.5px] font-semibold mt-0.5" style={{color:"#7C5BA0"}}>Doctor prefers {v.reschedulePrefFrom||"…"} → {v.reschedulePrefTo||"…"}</div>}
+          <button onClick={()=>{const d=prompt(`New date (YYYY-MM-DD)${v.reschedulePrefFrom?` — doctor prefers ${v.reschedulePrefFrom} to ${v.reschedulePrefTo}`:""}, or blank to clear the request:`,v.reschedulePrefFrom||v.date||"");resolveReschedule(v.id,d||null);onClose();}} className="mt-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold" style={{background:C.ink,color:"#fff"}}>Action it</button></div>}
       </div>
     </div>
   </div>);
@@ -1608,7 +1609,7 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
   const missingSoap=visits.filter(v=>v.status==="completed"&&!v.soapFiled&&v.date&&v.date<dayStr(-7));
   const rescheduleReqs=visits.filter(v=>v.rescheduleRequested);
   const attention=[
-    ...rescheduleReqs.map(v=>({v,tag:"Reschedule requested",c:"#9B7BB8",note:v.rescheduleNote})),
+    ...rescheduleReqs.map(v=>({v,tag:"Reschedule requested",c:"#9B7BB8",note:v.rescheduleNote,range:(v.reschedulePrefFrom||v.reschedulePrefTo)?`${v.reschedulePrefFrom||"…"} → ${v.reschedulePrefTo||"…"}`:""})),
     ...unconfirmedSoon.map(v=>({v,tag:"Unconfirmed < 24h",c:"#C99A2E"})),
     ...yesterdayNoShows.map(v=>({v,tag:"Yesterday no-show",c:C.red})),
     ...missingSoap.map(v=>({v,tag:"SOAP overdue",c:"#B5462F"})),
@@ -1633,11 +1634,11 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
     {attention.length>0&&<div className="rounded-2xl p-4 mb-4" style={{background:"#FFF8EC",border:`1px solid ${C.amber}55`}}>
       <div className="flex items-center gap-1.5 mb-2.5"><AlertTriangle size={15} color={C.amber}/><span className="text-[13px] font-bold" style={{color:"#9a6a00"}}>Needs attention · {attention.length}</span></div>
       <div className="space-y-1.5">
-        {attention.map(({v,tag,c,note},i)=>(<div key={v.id+tag+i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2" style={{border:`1px solid ${C.line}`}}>
+        {attention.map(({v,tag,c,note,range},i)=>(<div key={v.id+tag+i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2" style={{border:`1px solid ${C.line}`}}>
           <div className="flex items-center gap-2 text-[13px]"><span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{background:c+"22",color:c}}>{tag}</span>
-            <span className="font-semibold">{nameOf(v.patientId)}</span><span style={{color:C.grey}}>{v.doctorName} · {v.date||"—"}{note?` · "${note}"`:""}</span></div>
+            <span className="font-semibold">{nameOf(v.patientId)}</span><span style={{color:C.grey}}>{v.doctorName} · {v.date||"—"}{note?` · "${note}"`:""}{range?` · prefers ${range}`:""}</span></div>
           <div className="flex items-center gap-1.5">
-            {tag==="Reschedule requested"&&<button onClick={()=>{const d=prompt("New date (YYYY-MM-DD), or leave blank to just clear the request:",v.date||"");resolveReschedule(v.id,d||null);}} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.ink,color:"#fff"}}>Action</button>}
+            {tag==="Reschedule requested"&&<button onClick={()=>{const d=prompt(`New date (YYYY-MM-DD)${range?` — doctor prefers ${range}`:""}, or leave blank to just clear the request:`,v.reschedulePrefFrom||v.date||"");resolveReschedule(v.id,d||null);}} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.ink,color:"#fff"}}>Action</button>}
             {tag==="Unconfirmed < 24h"&&<button onClick={()=>updateVisitStatus(v.id,"confirmed")} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.teal,color:C.ink}}>Confirm</button>}
             {tag==="Yesterday no-show"&&<button onClick={()=>updateVisitStatus(v.id,"scheduled")} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Rebook</button>}
           </div>
@@ -2783,11 +2784,43 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
 }
 
 /* =============================== DOCTOR =============================== */
+// Doctor raises a reschedule request: must give a reason AND a suggested
+// date range so the admin knows when the patient could be re-booked.
+function RescheduleRequestModal({v,patientName,onClose,onSubmit}){
+  const today=ymd(new Date());
+  const[note,setNote]=useState("");
+  const[from,setFrom]=useState("");
+  const[to,setTo]=useState("");
+  const[busy,setBusy]=useState(false);
+  const reason=note.trim();
+  const rangeBad=from&&to&&to<from;
+  const valid=reason.length>0&&from&&to&&!rangeBad;
+  const submit=async()=>{if(!valid||busy)return;setBusy(true);try{await onSubmit({note:reason,prefFrom:from,prefTo:to});}finally{setBusy(false);}};
+  return(<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{background:"rgba(16,24,40,0.45)"}} onClick={onClose}>
+    <div className="bg-white w-full max-w-[400px] rounded-t-3xl sm:rounded-3xl p-5" onClick={e=>e.stopPropagation()}>
+      <div className="flex items-center justify-between mb-1"><h3 className="text-[17px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>Request reschedule</h3>
+        <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{background:C.bg}}><X size={16} color={C.grey}/></button></div>
+      <p className="text-[12.5px] mb-3" style={{color:C.grey}}>{patientName?`${patientName} · `:""}{v.date||v.time||"session"} — the admin will action it.</p>
+      <label className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Reason <span style={{color:C.red}}>*</span></label>
+      <textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} placeholder="Why does this session need to move?" className="w-full mt-1 mb-3 px-3 py-2 rounded-xl text-[14px]" style={{border:`1px solid ${C.line}`,resize:"none"}}/>
+      <label className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Suggested date range <span style={{color:C.red}}>*</span></label>
+      <div className="flex items-center gap-2 mt-1">
+        <input type="date" min={today} value={from} onChange={e=>{setFrom(e.target.value);if(to&&e.target.value&&to<e.target.value)setTo(e.target.value);}} className="flex-1 px-2.5 py-2 rounded-xl text-[13px] bg-white" style={{border:`1px solid ${C.line}`}}/>
+        <span className="text-[12px]" style={{color:C.grey}}>to</span>
+        <input type="date" min={from||today} value={to} onChange={e=>setTo(e.target.value)} className="flex-1 px-2.5 py-2 rounded-xl text-[13px] bg-white" style={{border:`1px solid ${C.line}`}}/>
+      </div>
+      {rangeBad&&<p className="text-[11.5px] mt-1.5" style={{color:C.red}}>End date can’t be before the start date.</p>}
+      <button disabled={!valid||busy} onClick={submit} className="w-full mt-4 py-2.5 rounded-xl font-bold text-[14px] disabled:opacity-40" style={{background:C.ink,color:"#fff"}}>{busy?"Sending…":"Send request"}</button>
+    </div>
+  </div>);
+}
+
 function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,requestReschedule,bookSession,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}){
-  const askReschedule=(v)=>{const note=window.prompt("Reason for the reschedule request (the admin will action it):","");if(note===null)return;requestReschedule(v.id,note.trim(),"doctor");};
+  const[reschedTarget,setReschedTarget]=useState(null);
+  const fmtRange=(v)=>{const a=v.reschedulePrefFrom,b=v.reschedulePrefTo;if(!a&&!b)return"";return ` · prefers ${a||"…"} → ${b||"…"}`;};
   const reschedFooter=(v)=>(v.rescheduleRequested
-    ?<div className="flex items-center gap-1.5 mt-2 text-[11.5px] font-semibold" style={{color:"#9B7BB8"}}><Clock size={12}/>Reschedule requested — awaiting admin</div>
-    :<button onClick={(e)=>{e.stopPropagation();askReschedule(v);}} className="mt-2 text-[11.5px] font-semibold" style={{color:C.grey}}>Request reschedule →</button>);
+    ?<div className="mt-2 text-[11.5px] font-semibold" style={{color:"#9B7BB8"}}><div className="flex items-center gap-1.5"><Clock size={12}/>Reschedule requested — awaiting admin</div>{(v.rescheduleNote||v.reschedulePrefFrom||v.reschedulePrefTo)&&<div className="mt-0.5 font-normal" style={{color:C.grey}}>{v.rescheduleNote||""}{fmtRange(v)}</div>}</div>
+    :<button onClick={(e)=>{e.stopPropagation();setReschedTarget(v);}} className="mt-2 text-[11.5px] font-semibold" style={{color:C.grey}}>Request reschedule →</button>);
   const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);const[booking,setBooking]=useState(null);
   const mine=visits.filter(v=>v.doctorName===me&&v.status!=="completed"&&!v.packageId);
   const myPackages=(packages||[]).filter(pk=>pk.doctorName===me&&pk.status!=="ended");
@@ -2855,6 +2888,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
       </div>}
 
       {booking&&<BookingModal slot={booking} doctors={doctors} patients={patients} visits={visits} fixedDoctor={me} onClose={()=>setBooking(null)} onBook={async payload=>{await bookSession({...payload,doctorName:me,booker:"doctor"});}}/>}
+      {reschedTarget&&<RescheduleRequestModal v={reschedTarget} patientName={pOf(reschedTarget.patientId)?.name} onClose={()=>setReschedTarget(null)} onSubmit={async(payload)=>{await requestReschedule(reschedTarget.id,payload,"doctor");setReschedTarget(null);}}/>}
 
       {tab==="patients"&&<div className="p-4">{myPatients.length===0&&<p className="text-[13px] text-center mt-6" style={{color:C.grey}}>No patients assigned to you yet.</p>}
         {myPatients.map(p=>{const h=notes.filter(n=>n.patientId===p.id);const last=h.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")).slice(-1)[0];return(

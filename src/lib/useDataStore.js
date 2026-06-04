@@ -716,19 +716,32 @@ export function useDataStore({ role, me }) {
   }, [visits, patients, config, notify])
 
   // Doctor cannot cancel directly — this raises a request to admin (§3.3).
-  const requestReschedule = useCallback(async (vid, note, by) => {
-    setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, rescheduleRequested: true, rescheduleNote: note || null } : x))
-    await supabase.from('visits').update({ reschedule_requested: true, reschedule_note: note || null }).eq('id', vid)
+  // The doctor must give a reason and a suggested date range (prefFrom..prefTo)
+  // so the admin knows when the patient could be re-booked.
+  const requestReschedule = useCallback(async (vid, opts, by) => {
+    // Back-compat: callers used to pass a bare note string.
+    const { note, prefFrom = null, prefTo = null } =
+      typeof opts === 'string' ? { note: opts } : (opts || {})
+    setVisits((vs) => vs.map((x) => x.id === vid
+      ? { ...x, rescheduleRequested: true, rescheduleNote: note || null, reschedulePrefFrom: prefFrom, reschedulePrefTo: prefTo }
+      : x))
+    await supabase.from('visits').update({
+      reschedule_requested: true,
+      reschedule_note: note || null,
+      reschedule_pref_from: prefFrom,
+      reschedule_pref_to: prefTo,
+    }).eq('id', vid)
     const v = visits.find((x) => x.id === vid)
     const pt = v && patients.find((p) => p.id === v.patientId)
-    notify('admin', `${by || 'Doctor'} requested reschedule/cancel for ${pt?.name || 'a session'}${note ? ` — ${note}` : ''}`)
+    const range = prefFrom || prefTo ? ` (prefers ${prefFrom || '…'} → ${prefTo || '…'})` : ''
+    notify('admin', `${by || 'Doctor'} requested reschedule for ${pt?.name || 'a session'}${note ? ` — ${note}` : ''}${range}`)
   }, [visits, patients, notify])
 
-  // Admin actions a reschedule: clears the request flag (optionally moving the date).
+  // Admin actions a reschedule: clears the request flag and range (optionally moving the date).
   const resolveReschedule = useCallback(async (vid, newDate) => {
-    const patch = { reschedule_requested: false, reschedule_note: null }
+    const patch = { reschedule_requested: false, reschedule_note: null, reschedule_pref_from: null, reschedule_pref_to: null }
     if (newDate) { patch.date = newDate; patch.status = 'rescheduled' }
-    setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, rescheduleRequested: false, rescheduleNote: null, ...(newDate ? { date: newDate, status: 'rescheduled' } : {}) } : x))
+    setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, rescheduleRequested: false, rescheduleNote: null, reschedulePrefFrom: null, reschedulePrefTo: null, ...(newDate ? { date: newDate, status: 'rescheduled' } : {}) } : x))
     await supabase.from('visits').update(patch).eq('id', vid)
   }, [])
 
