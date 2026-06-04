@@ -1451,8 +1451,10 @@ function TimeGrid({events=[],defaultView="week",onSlotClick,onEventClick,startHo
     <button onClick={(e)=>{e.stopPropagation();onEventClick&&onEventClick(ev);}}
       className="absolute left-0.5 right-0.5 rounded-lg px-1.5 py-1 text-left overflow-hidden"
       style={{top:topPx,height:Math.max(hPx,18),background:(ev.color||C.teal)+(ev.faded?"22":"33"),borderLeft:`3px solid ${ev.color||C.teal}`,opacity:ev.faded?0.6:1,zIndex:5}}>
-      <div className="text-[11px] font-bold leading-tight truncate" style={{color:C.ink}}>{ev.title}</div>
+      {ev.noSoap&&<span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full" style={{background:C.amber}} title="No SOAP filed"/>}
+      <div className="text-[11px] font-bold leading-tight truncate pr-2" style={{color:C.ink}}>{ev.title}</div>
       {hPx>=34&&<div className="text-[10px] leading-tight truncate" style={{color:C.ink2}}>{ev.subtitle}</div>}
+      {ev.noSoap&&hPx>=50&&<span className="inline-block mt-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background:C.amber+"22",color:"#9a6a00"}}>No SOAP</span>}
     </button>
   );
 
@@ -1469,7 +1471,7 @@ function TimeGrid({events=[],defaultView="week",onSlotClick,onEventClick,startHo
           <div key={i} onClick={()=>onSlotClick&&onSlotClick(ymd(d),"09:00")} className="min-h-[92px] p-1.5 cursor-pointer" style={{borderRight:(i%7!==6)?`1px solid ${C.line}`:"none",borderBottom:i<35?`1px solid ${C.line}`:"none",background:inMonth?"#fff":"#FAFAF8"}}>
             <div className="flex justify-end"><span className="text-[11px] font-semibold w-6 h-6 flex items-center justify-center rounded-full" style={{background:isToday?C.ink:"transparent",color:isToday?"#fff":inMonth?C.ink2:C.grey}}>{d.getDate()}</span></div>
             <div className="space-y-0.5 mt-0.5">{evs.slice(0,3).map(ev=>(<button key={ev.id} onClick={(e)=>{e.stopPropagation();onEventClick&&onEventClick(ev);}} className="w-full flex items-center gap-1 px-1 py-0.5 rounded text-left" style={{background:(ev.color||C.teal)+"22"}}>
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{background:ev.color||C.teal}}/><span className="text-[10px] truncate" style={{color:C.ink}}>{ev.start!=null?hm12(ev.start)+" ":""}{ev.title}</span></button>))}
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{background:ev.color||C.teal}}/><span className="text-[10px] truncate" style={{color:C.ink}}>{ev.start!=null?hm12(ev.start)+" ":""}{ev.title}</span>{ev.noSoap&&<span className="w-1.5 h-1.5 rounded-full shrink-0 ml-auto" style={{background:C.amber}} title="No SOAP filed"/>}</button>))}
               {evs.length>3&&<div className="text-[10px] pl-1" style={{color:C.grey}}>+{evs.length-3} more</div>}</div>
           </div>);})}</div>
       </div>
@@ -1491,7 +1493,7 @@ function TimeGrid({events=[],defaultView="week",onSlotClick,onEventClick,startHo
       <div className="grid" style={{gridTemplateColumns:`${gutter}px repeat(${days.length},minmax(0,1fr))`,borderBottom:`1px solid ${C.line}`,background:"#FAFAF8"}}>
         <div className="text-[9px] font-semibold flex items-center justify-end pr-1.5 py-1" style={{color:C.grey}}>all-day</div>
         {days.map((d,i)=>{const un=(evByDay[ymd(d)]||[]).filter(ev=>ev.start==null);return(<div key={i} className="p-1 min-h-[26px] space-y-0.5" style={{borderLeft:`1px solid ${C.line}`}}>
-          {un.map(ev=>(<button key={ev.id} onClick={()=>onEventClick&&onEventClick(ev)} className="w-full flex items-center gap-1 px-1 py-0.5 rounded text-left" style={{background:(ev.color||C.teal)+"22"}}><span className="w-1.5 h-1.5 rounded-full shrink-0" style={{background:ev.color||C.teal}}/><span className="text-[10px] truncate" style={{color:C.ink}}>{ev.title}</span></button>))}
+          {un.map(ev=>(<button key={ev.id} onClick={()=>onEventClick&&onEventClick(ev)} className="w-full flex items-center gap-1 px-1 py-0.5 rounded text-left" style={{background:(ev.color||C.teal)+"22"}}><span className="w-1.5 h-1.5 rounded-full shrink-0" style={{background:ev.color||C.teal}}/><span className="text-[10px] truncate" style={{color:C.ink}}>{ev.title}</span>{ev.noSoap&&<span className="w-1.5 h-1.5 rounded-full shrink-0 ml-auto" style={{background:C.amber}} title="No SOAP filed"/>}</button>))}
         </div>);})}
       </div>
       {/* time grid */}
@@ -1624,6 +1626,7 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
         <div><div className="text-[15px] font-bold" style={{color:C.ink}}>{nameOf(v.patientId)}</div><div className="text-[11px]" style={{color:C.ink2}}>{v.doctorName} · {v.date||"—"} {to12(v.time)} · {VISIT_TYPE_LABEL[v.type]||v.type}</div></div>
         <button onClick={onClose}><X size={18} color={C.grey}/></button></div>
       <div className="p-4 space-y-3">
+        {!!v.date&&v.date<=new Date().toISOString().slice(0,10)&&v.status!=="no_show"&&<div className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg" style={{background:v.soapFiled?C.green+"18":C.amber+"22",color:v.soapFiled?C.green:"#9a6a00"}}>{v.soapFiled?<><ClipboardCheck size={13}/> SOAP filed</>:<><AlertTriangle size={13}/> No SOAP filed for this session</>}</div>}
         <div className="text-[11px]" style={{color:C.ink2}}><span className="font-bold uppercase text-[10px]" style={{color:C.grey}}>Booked by</span> · {v.bookedBy==="relative"?`Relative — ${v.relativeName||"—"}${v.relativeRelation?` (${v.relativeRelation})`:""}`:"Patient"}</div>
         {rescheduleVisit&&<div><div className="text-[10px] font-bold uppercase mb-1.5" style={{color:C.grey}}>Session date &amp; time</div>
           <div className="flex gap-1.5">
@@ -1667,8 +1670,9 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
     .filter(v=>v.status!=="cancelled"&&v.status!=="rescheduled"&&(!fDoc||v.doctorName===fDoc)&&(!fStatus||v.status===fStatus))
     .map(v=>({id:v.id,date:v.date,start:parseHM(v.time),durationMin:v.durationMin||45,
       title:nameOf(v.patientId),subtitle:`${v.doctorName} · ${VISIT_STATUS_LABEL[v.status]||v.status}`,
-      color:docColor(v.doctorName,doctors),faded:v.status==="completed"||v.status==="no_show",raw:v}))
-  ,[visits,fDoc,fStatus,doctors,nameOf]);
+      color:docColor(v.doctorName,doctors),faded:v.status==="completed"||v.status==="no_show",
+      noSoap:!v.soapFiled&&!!v.date&&v.date<=todayStr&&v.status!=="no_show",raw:v}))
+  ,[visits,fDoc,fStatus,doctors,nameOf,todayStr]);
 
   const onBook=async payload=>{await bookSession({...payload,booker:"admin"});};
 
@@ -2966,7 +2970,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
       {tab==="calendar"&&<div className="p-3">
         <button onClick={()=>setBooking({date:ymd(new Date()),time:"09:00"})} className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-[14px] text-white" style={{background:C.ink}}><Plus size={16}/>Add patient to slot</button>
         <TimeGrid defaultView="day" compact
-          events={visits.filter(v=>v.doctorName===me&&v.status!=="cancelled"&&v.status!=="rescheduled").map(v=>({id:v.id,date:v.date,start:parseHM(v.time),durationMin:v.durationMin||45,title:pOf(v.patientId)?.name||"—",subtitle:VISIT_TYPE_LABEL[v.type]||v.type,color:C.teal,faded:v.status==="completed"||v.status==="no_show",raw:v}))}
+          events={visits.filter(v=>v.doctorName===me&&v.status!=="cancelled"&&v.status!=="rescheduled").map(v=>({id:v.id,date:v.date,start:parseHM(v.time),durationMin:v.durationMin||45,title:pOf(v.patientId)?.name||"—",subtitle:VISIT_TYPE_LABEL[v.type]||v.type,color:C.teal,faded:v.status==="completed"||v.status==="no_show",noSoap:!v.soapFiled&&!!v.date&&v.date<=ymd(new Date())&&v.status!=="no_show",raw:v}))}
           onSlotClick={(date,time)=>setBooking({date,time})}
           onEventClick={ev=>{const v=ev.raw;const p=pOf(v.patientId);if(p)setViewP(p);}}/>
       </div>}
