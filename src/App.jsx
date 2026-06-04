@@ -1803,7 +1803,8 @@ function NoteReview({note,onAction}){
   const[c,setC]=useState(false);
   return(<div className="flex-1 bg-white rounded-2xl p-6 self-start" style={{border:`1px solid ${C.line}`}}>
     <h2 className="text-[20px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>{note.patientName}</h2>
-    <div className="text-[13px] mb-4" style={{color:C.grey}}>{note.doctorName} · {note.type}</div>
+    <div className="text-[13px]" style={{color:C.grey}}>{note.doctorName} · {note.type}{note.date&&<> · session {note.date}</>}</div>
+    <div className="mb-4 mt-1.5"><LogTimingBadge note={note}/></div>
     {note.redFlag&&<div className="rounded-xl p-3.5 mb-4 flex gap-2.5" style={{background:"#FDF3F1",border:`1px solid ${C.red}55`}}>
       <AlertTriangle size={17} color={C.red}/><div className="text-[13px]" style={{color:C.ink2}}><b style={{color:C.red}}>Red flag · </b>{note.redFlagNote||"reported"}</div></div>}
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
@@ -1837,6 +1838,18 @@ const Tags=({label,items})=>(<div className="mb-4"><div className="text-[11px] f
 const NoteText=({label,value})=> value?(<div className="mb-3"><div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{color:C.grey}}>{label}</div><div className="text-[13px] whitespace-pre-wrap" style={{color:C.ink2}}>{value}</div></div>):null;
 // Small S/O/A/P letter chip used to head a group of narrative blocks.
 const SoapTag=({letter})=>(<span className="inline-flex w-5 h-5 rounded items-center justify-center text-[11px] font-bold text-white mr-1.5 align-middle" style={{background:C.ink}}>{letter}</span>);
+// Flags a SOAP note that was filed on a different day than the session it
+// documents — back-dated (logged late) or future-dated. Compares the session
+// date (note.date, set by the doctor) against created_at (when it was filed).
+const LogTimingBadge=({note})=>{
+  if(!note?.date||!note?.createdAt)return null;
+  const logged=new Date(note.createdAt).toISOString().slice(0,10);
+  if(note.date===logged)return null;
+  const diff=Math.round((new Date(logged)-new Date(note.date))/86400000);
+  const late=diff>0;const n=Math.abs(diff);
+  const txt=late?`Logged ${n} day${n===1?"":"s"} late`:`Filed ${n} day${n===1?"":"s"} before session`;
+  return(<span className="text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1" style={{background:late?"#FBF1E3":"#FDECEA",color:late?"#9A6B22":C.red}} title={`Session ${note.date} · filed ${logged}`}><AlertTriangle size={11}/>{txt} · session {note.date}, filed {logged}</span>);
+};
 
 /* ---------- weekly availability grid (days × time slots) ---------- */
 function SlotGrid({slots,onToggle}){
@@ -2566,6 +2579,7 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
               </button>
               {o&&<div className="px-5 pb-4 space-y-1.5 text-[13px]" style={{color:C.ink2}}>
                 <div><b>Doctor:</b> {n.doctorName}</div>
+                <div><LogTimingBadge note={n}/></div>
                 {n.subjective&&<div><b>S · Subjective:</b> <span className="whitespace-pre-wrap">{n.subjective}</span></div>}
                 {n.objective&&<div><b>O · Objective:</b> <span className="whitespace-pre-wrap">{n.objective}</span></div>}
                 {n.measures&&<div><b>O · Tests &amp; measures:</b> <span className="whitespace-pre-wrap">{n.measures}</span></div>}
@@ -3082,6 +3096,10 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
   const[dx,setDx]=useState(patient.dx||lastAssess?.dx||null),[sheet,setSheet]=useState(false);
   const[plan,setPlan]=useState(lastAssess?.plan||"");
   const[customEx,setCustomEx]=useState([]),[newEx,setNewEx]=useState(""),[nextDate,setNextDate]=useState("");
+  // Session date — the day the session actually happened. Defaults to today
+  // (the normal same-day case) but pre-fills a past scheduled visit's date.
+  const _today=new Date().toISOString().slice(0,10);
+  const[sessionDate,setSessionDate]=useState(visit.date&&visit.date<=_today?visit.date:_today);
   // structured SOAP narrative fields (all optional — quick logging still works)
   const[subjective,setSubjective]=useState(""),[objective,setObjective]=useState(""),[measures,setMeasures]=useState("");
   const[assessment,setAssessment]=useState(""),[goals,setGoals]=useState(lastAssess?.goals||""),[hep,setHep]=useState(lastAssess?.hep||""),[education,setEducation]=useState("");
@@ -3094,6 +3112,11 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
       <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:C.teal,color:C.ink}}>{visit.type}</span></div>
     <div className="px-4 pt-4 space-y-3">
       {!isAssess&&lastAssess&&<div className="rounded-xl px-3.5 py-2.5 flex gap-2" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`}}><Activity size={15} color="#2E6E73" className="flex-shrink-0 mt-0.5"/><p className="text-[12px]" style={{color:C.ink2}}>Carried from assessment: <b>{lastAssess.dx?.label||"dx"}</b>. No need to re-enter.</p></div>}
+      {/* Session date — when the session actually took place */}
+      <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${sessionDate!==_today?C.amber:C.line}`}}>
+        <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Session date <span style={{color:C.amber}}>· required</span></div>
+        <input type="date" value={sessionDate} onChange={e=>setSessionDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[15px] outline-none bg-white" style={{border:`1px solid ${sessionDate!==_today?C.amber:C.line}`,color:C.ink}}/>
+        <p className="text-[11px] mt-1.5 flex items-center gap-1.5" style={{color:sessionDate!==_today?C.amber:C.grey}}><Calendar size={12}/>{sessionDate===_today?"The day this session took place — defaults to today.":sessionDate<_today?`Back-dated to ${sessionDate} (logging today). Admin will be notified.`:`Dated in the future (${sessionDate}). Admin will be notified.`}</p></div>
       {/* S — SUBJECTIVE */}
       <SoapSection letter="S" label="Subjective" hint="What the patient reports"/>
       <NoteArea label="Subjective" hint="chief complaint · OLDCART · goals" value={subjective} set={setSubjective} rows={3} placeholder="Patient's reported symptoms today — onset, location, duration, character, aggravating / relieving factors, timing — and what they want to achieve."/>
@@ -3148,7 +3171,7 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
     </div>
     <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 pt-3 pb-5" style={{background:`linear-gradient(to top, ${C.bg} 75%, transparent)`}}>
       <button disabled={!can} onClick={()=>onSubmit({visitId:visit.id,patientId:patient.id,patientName:patient.name,doctorName:visit.doctorName,type:visit.type,
-        painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,redFlag:rf,redFlagNote:rfn,dx,
+        painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,redFlag:rf,redFlagNote:rfn,dx,sessionDate,
         subjective,objective,measures,assessment,goals,hep,education,additionalNotes})}
         className="w-full py-4 rounded-2xl font-bold text-[15px] text-white" style={{background:can?C.ink:"#C9CDD2",boxShadow:can?"0 8px 20px rgba(30,42,58,0.25)":"none"}}>
         {can?"Complete & submit for review":isAssess?"Add diagnosis to submit":"Log pain + response"}</button></div>

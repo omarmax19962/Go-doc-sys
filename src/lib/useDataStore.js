@@ -324,7 +324,11 @@ export function useDataStore({ role, me }) {
       }
     }
     const today = new Date().toISOString().slice(0, 10)
-    const noteRow = { ...n, state: 'submitted', date: today }
+    // The doctor sets the date the session actually took place. created_at
+    // (DB default now()) records when the note was really filed, so admin can
+    // see any gap between the two — back-dated or future-dated entries.
+    const sessionDate = n.sessionDate || today
+    const noteRow = { ...n, state: 'submitted', date: sessionDate }
     const { data: noteData, error: noteErr } = await supabase.from('notes').insert(toNote(noteRow)).select().single()
     if (noteErr) { console.error('submitNote', noteErr); return }
     const inserted = fromNote(noteData)
@@ -372,6 +376,14 @@ export function useDataStore({ role, me }) {
     }
 
     notify('admin', `${n.doctorName} submitted a ${n.type} note for ${n.patientName} — awaiting review`, null, { view: 'review', patientId: n.patientId })
+    // Flag back-dated / future-dated entries so admin notices timing mismatches.
+    if (sessionDate !== today) {
+      const diff = Math.round((new Date(today) - new Date(sessionDate)) / 86400000)
+      const msg = diff > 0
+        ? `⏱ ${n.doctorName} logged a ${n.type} note ${diff} day${diff === 1 ? '' : 's'} late — session ${sessionDate}, filed ${today} (${n.patientName})`
+        : `⚠ ${n.doctorName} filed a ${n.type} note dated in the future — session ${sessionDate}, filed ${today} (${n.patientName})`
+      notify('admin', msg, null, { view: 'review', patientId: n.patientId })
+    }
     if (n.redFlag) notify('admin', `⚠ Red flag raised by ${n.doctorName} for ${n.patientName}`, null, { view: 'review', patientId: n.patientId })
   }, [visits, patients, finances, config, changeStatus, notify])
 

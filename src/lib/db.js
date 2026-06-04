@@ -164,6 +164,7 @@ export const fromNote = (r) => ({
   state: r.state,
   openedAt: r.opened_at,
   reviewedAt: r.reviewed_at,
+  createdAt: r.created_at || null,
   // structured SOAP narrative fields
   subjective: r.subjective || '',
   objective: r.objective || '',
