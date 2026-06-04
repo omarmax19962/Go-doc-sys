@@ -137,6 +137,22 @@ export function useDataStore({ role, me }) {
     if (error) console.error('writePatient', error)
   }
 
+  // Create a single Pending finance line for a freshly-booked visit, linked by
+  // visit_id so a later completion / SOAP note never double-bills the same
+  // session. Idempotent locally via the visit_id guard.
+  const _billVisit = useCallback(async (visit, patientName) => {
+    if (!visit || !visit.id) return
+    const fin = {
+      date: visit.date || new Date().toISOString().slice(0, 10),
+      doctor: visit.doctorName || '—', patient: patientName || '—',
+      type: visit.type || 'Treatment', fee: config.defaultFee, pct: config.defaultPct,
+      status: 'Pending', method: 'Cash', visit_id: visit.id,
+    }
+    const { data, error } = await supabase.from('finances').insert(fin).select().single()
+    if (error) { console.warn('billVisit', error); return }
+    setFinances((fs) => fs.some((f) => f.visitId === visit.id) ? fs : [...fs, fromFinance(data)])
+  }, [config])
+
   const changeStatus = useCallback((pid, to, note, actor) => {
     actor = actor || (role === 'admin' ? 'Admin' : meRef.current)
     setPatients((ps) => ps.map((p) => {
@@ -169,16 +185,43 @@ export function useDataStore({ role, me }) {
     if (booked) {
       const v = { patient_id: inserted.id, doctor_name: doctor, type: 'Assessment', time: '12:00', date, status: 'scheduled' }
       const { data: vd } = await supabase.from('visits').insert(v).select().single()
-      if (vd) setVisits((vs) => [...vs, fromVisit(vd)])
+      if (vd) {
+        const iv = fromVisit(vd)
+        setVisits((vs) => [...vs, iv])
+        await _billVisit(iv, inserted.name)
+      }
     }
     notify('admin', booked ? `New booking: ${p.name} → ${doctor} (${date})` : `New lead added: ${p.name}`)
     if (booked) notify('doctor', `New patient booked with you: ${p.name}`, doctor)
-  }, [notify])
+  }, [config, notify, _billVisit])
 
   const updatePatientFiles = useCallback(async (pid, files) => {
     setPatients((ps) => ps.map((p) => p.id === pid ? { ...p, files } : p))
     await supabase.from('patients').update({ files }).eq('id', pid)
   }, [])
+
+  // Edit a patient's profile fields (name, age, gender, phone, complaint,
+  // history, zone, location, source, dx). Merges the patch over the current
+  // record so partial updates are safe.
+  const updatePatient = useCallback(async (pid, patch) => {
+    const prev = patients.find((p) => p.id === pid)
+    let next = null
+    setPatients((ps) => ps.map((p) => {
+      if (p.id !== pid) return p
+      next = { ...p, ...patch }
+      return next
+    }))
+    if (!next) return
+    const { error } = await supabase.from('patients').update(toPatient(next)).eq('id', pid)
+    if (error) { console.error('updatePatient', error); return }
+    // finances are keyed by patient name — re-point them on rename so the
+    // patient's billing history stays attached and reports don't split.
+    if (prev && patch.name && patch.name !== prev.name) {
+      setFinances((fs) => fs.map((f) => f.patient === prev.name ? { ...f, patient: patch.name } : f))
+      await supabase.from('finances').update({ patient: patch.name }).eq('patient', prev.name)
+    }
+    notify('admin', `Patient profile updated: ${next.name}`)
+  }, [patients, notify])
 
   const assignDoctor = useCallback(async (pid, name) => {
     const pt = patients.find((p) => p.id === pid)
@@ -193,10 +236,14 @@ export function useDataStore({ role, me }) {
       const hasHistory = visits.some((v) => v.patientId === pid && v.status === 'completed')
       const newV = { patient_id: pid, doctor_name: name, type: hasHistory ? 'Treatment' : 'Assessment', time: 'to schedule', status: 'scheduled' }
       const { data } = await supabase.from('visits').insert(newV).select().single()
-      if (data) setVisits((vs) => [...vs, fromVisit(data)])
+      if (data) {
+        const iv = fromVisit(data)
+        setVisits((vs) => [...vs, iv])
+        await _billVisit(iv, pt?.name)
+      }
     }
     if (name) notify('doctor', `You were assigned to ${pt?.name || 'a patient'} — visit added to your list`, name)
-  }, [patients, visits, changeStatus, notify])
+  }, [patients, visits, changeStatus, notify, _billVisit])
 
   // Calendly-style booking: drops a scheduled visit at a specific date/time.
   // If `newPatient` is supplied (no patientId), creates the patient first.
@@ -226,7 +273,21 @@ export function useDataStore({ role, me }) {
     const rows = Array.from({ length: n }, (_, i) => (i === 0 ? base : { ...base, date: null, time: '—' }))
     const { data: vd, error: verr } = await supabase.from('visits').insert(rows).select()
     if (verr) { console.error('bookSession visit', verr); return }
-    setVisits((vs) => [...vs, ...(vd || []).map(fromVisit)])
+    const insertedVisits = (vd || []).map(fromVisit)
+    setVisits((vs) => [...vs, ...insertedVisits])
+    // Each booked session immediately shows in the books as a Pending line,
+    // linked by visit_id so completion / SOAP won't double-bill it.
+    if (insertedVisits.length) {
+      const today = new Date().toISOString().slice(0, 10)
+      const finRows = insertedVisits.map((v) => ({
+        date: v.date || today, doctor: doctorName || '—', patient: pname,
+        type: v.type, fee: config.defaultFee, pct: config.defaultPct,
+        status: 'Pending', method: 'Cash', visit_id: v.id,
+      }))
+      const { data: fdata, error: ferr } = await supabase.from('finances').insert(finRows).select()
+      if (ferr) console.warn('bookSession finance', ferr)
+      else if (fdata) setFinances((fs) => [...fs, ...fdata.map(fromFinance)])
+    }
     if (n > 1) {
       notify('admin', `${n} sessions booked: ${pname} → ${doctorName || '—'}${date ? ` (1st on ${date})` : ' (dates open)'}`)
       if (doctorName && booker !== 'doctor') notify('doctor', `${n} sessions booked: ${pname}`, doctorName)
@@ -234,7 +295,7 @@ export function useDataStore({ role, me }) {
       notify('admin', `Session booked: ${pname} → ${doctorName || '—'} (${date || '—'} ${time || ''})`)
       if (doctorName && booker !== 'doctor') notify('doctor', `New session booked: ${pname} (${date || '—'} ${time || ''})`, doctorName)
     }
-  }, [patients, notify])
+  }, [patients, config, notify])
 
   // Move/resize a visit on the calendar (drag or edit).
   const rescheduleVisit = useCallback(async (vid, { date, time, durationMin }) => {
@@ -295,18 +356,21 @@ export function useDataStore({ role, me }) {
     }
     if (pt && pt.status !== 'active') changeStatus(n.patientId, 'active', `First note logged by ${n.doctorName}`, 'System')
 
-    // finance entry (linked to the visit so we never double-bill it)
-    const fin = {
-      date: today, doctor: n.doctorName, patient: n.patientName, type: n.type,
-      fee: config.defaultFee, pct: config.defaultPct, status: 'Pending', method: 'Cash',
-      visit_id: completedVisitId || null,
+    // finance entry — only if this visit wasn't already billed at booking time
+    // (sessions are now billed the moment they're created, linked by visit_id).
+    if (!completedVisitId || !finances.some((f) => f.visitId === completedVisitId)) {
+      const fin = {
+        date: today, doctor: n.doctorName, patient: n.patientName, type: n.type,
+        fee: config.defaultFee, pct: config.defaultPct, status: 'Pending', method: 'Cash',
+        visit_id: completedVisitId || null,
+      }
+      const { data: fd } = await supabase.from('finances').insert(fin).select().single()
+      if (fd) setFinances((fs) => [...fs, fromFinance(fd)])
     }
-    const { data: fd } = await supabase.from('finances').insert(fin).select().single()
-    if (fd) setFinances((fs) => [...fs, fromFinance(fd)])
 
     notify('admin', `${n.doctorName} submitted a ${n.type} note for ${n.patientName} — awaiting review`)
     if (n.redFlag) notify('admin', `⚠ Red flag raised by ${n.doctorName} for ${n.patientName}`)
-  }, [visits, patients, config, changeStatus, notify])
+  }, [visits, patients, finances, config, changeStatus, notify])
 
   const reviewNote = useCallback(async (id, s) => {
     const n = notes.find((x) => x.id === id)
@@ -460,6 +524,15 @@ export function useDataStore({ role, me }) {
       const pt = patients.find((p) => p.id === v.patientId)
       const tail = status === 'cancelled' ? ` (by ${by || 'admin'})` : ''
       notify('admin', `${pt?.name || 'Visit'} → ${status}${tail}`)
+      // Cancelling a session voids its still-unpaid billing line so the books
+      // don't carry revenue for a session that never happened.
+      if (status === 'cancelled') {
+        const pend = finances.find((f) => f.visitId === vid && f.status === 'Pending')
+        if (pend) {
+          setFinances((fs) => fs.filter((f) => f.id !== pend.id))
+          await supabase.from('finances').delete().eq('id', pend.id)
+        }
+      }
       // When a session is marked completed, generate its billing entry once
       // (guarded by visit_id so a later SOAP note won't double-bill the same visit).
       if (status === 'completed' && !finances.some((f) => f.visitId === vid)) {
@@ -648,7 +721,7 @@ export function useDataStore({ role, me }) {
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages,
     loading, error,
     // mutations
-    addPatient, assignDoctor, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
+    addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
