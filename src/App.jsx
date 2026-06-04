@@ -4,12 +4,13 @@ import {
   ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Pencil, Paperclip, Link2,
   CircleCheck, AlertTriangle, MessageSquare, CornerUpLeft, Trash2, Activity, Wallet,
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
-  Layers, Lock, CalendarDays, Download, Receipt, Banknote
+  Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./lib/useAuth";
 import { useDataStore } from "./lib/useDataStore";
+import { openWhatsApp } from "./lib/wa";
 import Login from "./components/Login";
 
 /* ============================================================================
@@ -1585,7 +1586,7 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
         </div>}
         <div><div className="text-[10px] font-bold uppercase mb-1.5" style={{color:C.grey}}>Status</div>
           <select value={v.status} onChange={e=>{updateVisitStatus(v.id,e.target.value,"admin");onClose();}} className="w-full px-3 py-2 rounded-lg text-[13px] font-semibold outline-none" style={{border:`1px solid ${C.line}`,color:visitStatusColor[v.status]}}>{VISIT_STATUSES.map(s=><option key={s} value={s} style={{color:C.ink}}>{VISIT_STATUS_LABEL[s]}</option>)}</select></div>
-        <div><div className="text-[10px] font-bold uppercase mb-1.5" style={{color:C.grey}}>Reminders</div>
+        <div><div className="text-[10px] font-bold uppercase mb-1.5 flex items-center gap-1" style={{color:C.grey}}><MessageCircle size={11} color={C.green}/>Reminders · opens WhatsApp</div>
           <div className="flex gap-1.5"><Rem on={v.reminder24h} label="24h" kind="24h"/><Rem on={v.reminder8h} label="8h" kind="8h"/><Rem on={v.reminderSameday} label="Same-day" kind="sameday"/></div></div>
         {v.rescheduleRequested&&<div className="rounded-lg p-2.5" style={{background:"#F3EEF8"}}>
           <div className="text-[11px] font-bold" style={{color:"#9B7BB8"}}>Reschedule requested{v.rescheduleNote?` — "${v.rescheduleNote}"`:""}</div>
@@ -2398,6 +2399,7 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
         </div>
         <div className="flex items-center gap-2">
           {patient.phone&&<a href={`tel:${patient.phone}`} className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(255,255,255,0.12)"}}><Phone size={16} color="#fff"/></a>}
+          {patient.phone&&<button onClick={()=>openWhatsApp(patient.phone,`Hi ${patient.name?.split(" ")[0]||""}, this is Go Doc.`)} title="Open WhatsApp chat" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(63,167,150,0.9)"}}><MessageCircle size={16} color="#fff"/></button>}
           {patient.locUrl&&<a href={patient.locUrl} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(255,255,255,0.12)"}}><MapPin size={16} color="#fff"/></a>}
           {role==="admin"&&updatePatient&&<button onClick={()=>setMode(mode==="edit"?"profile":"edit")} title="Edit profile" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:mode==="edit"?C.teal:"rgba(255,255,255,0.12)"}}><Pencil size={15} color={mode==="edit"?C.ink:"#fff"}/></button>}
           {role==="admin"&&updatePatientStatus&&patient.status!=="discharged"&&<StatusMenu patient={patient} onSet={(to,note)=>updatePatientStatus(patient.id,to,note)}/>}
@@ -2688,7 +2690,7 @@ function SettingsTab({config,updateConfig}){
     </div>
     <div className="bg-white rounded-2xl p-6 mt-4" style={{border:`1px solid ${C.line}`}}>
       <h3 className="font-bold text-[16px] mb-1" style={{fontFamily:HEAD}}>Reminder templates</h3>
-      <p className="text-[12px] mb-4" style={{color:C.grey}}>Message sent for each reminder. Use placeholders <code>{"{patient}"}</code>, <code>{"{doctor}"}</code>, <code>{"{date}"}</code>, <code>{"{time}"}</code> — they're filled in per recipient when the reminder fires.</p>
+      <p className="text-[12px] mb-4" style={{color:C.grey}}>Tapping a reminder on the calendar opens WhatsApp with this message pre-typed to the patient — you just press send (no WhatsApp API needed). Use placeholders <code>{"{patient}"}</code>, <code>{"{doctor}"}</code>, <code>{"{date}"}</code>, <code>{"{time}"}</code> — filled in per recipient when the reminder fires.</p>
       <div className="space-y-3">{TPL.map(t=>(
         <Field key={t.k} label={`${t.label} — ${t.hint}`}>
           <textarea value={tdraft[t.k]} onChange={e=>setTdraft(d=>({...d,[t.k]:e.target.value}))} rows={2} placeholder="Type the message…" className="w-full px-3 py-2.5 rounded-xl text-[13px] outline-none bg-white resize-y" style={{border:`1px solid ${C.line}`,color:C.ink}}/>

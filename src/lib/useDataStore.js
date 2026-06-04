@@ -14,6 +14,7 @@ import {
   fromPackage, toPackage,
   fromNotif,
 } from './db'
+import { openWhatsApp } from './wa'
 
 /**
  * useDataStore — single source of truth for the app. Loads all entities once,
@@ -699,6 +700,11 @@ export function useDataStore({ role, me }) {
     const v = visits.find((x) => x.id === vid)
     if (!v) return
     const pt = patients.find((p) => p.id === v.patientId)
+    const tmpl = kind === '24h' ? config.tmpl24h : kind === '8h' ? config.tmpl8h : config.tmplSameday
+    const msg = fillTemplate(tmpl, { patient: pt?.name, doctor: v.doctorName, date: v.date, time: v.time })
+    // Open WhatsApp first (synchronous, inside the click gesture) so the pre-filled
+    // message is ready to send — no Business API needed. Admin presses send.
+    const opened = pt?.phone ? openWhatsApp(pt.phone, msg) : false
     const col = kind === '24h' ? 'reminder_24h' : kind === '8h' ? 'reminder_8h' : 'reminder_sameday'
     const camel = kind === '24h' ? 'reminder24h' : kind === '8h' ? 'reminder8h' : 'reminderSameday'
     const patch = { [col]: true }
@@ -706,9 +712,7 @@ export function useDataStore({ role, me }) {
     if (nextStatus !== v.status) patch.status = nextStatus
     setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, [camel]: true, status: nextStatus } : x))
     await supabase.from('visits').update(patch).eq('id', vid)
-    const tmpl = kind === '24h' ? config.tmpl24h : kind === '8h' ? config.tmpl8h : config.tmplSameday
-    const msg = fillTemplate(tmpl, { patient: pt?.name, doctor: v.doctorName, date: v.date, time: v.time })
-    notify('admin', `Reminder (${kind}) sent to ${pt?.name || 'patient'}: "${msg}"`)
+    notify('admin', `WhatsApp reminder (${kind}) ${opened ? 'opened for' : 'prepared for'} ${pt?.name || 'patient'}${pt?.phone ? '' : ' — no phone on file'}: "${msg}"`)
   }, [visits, patients, config, notify])
 
   // Doctor cannot cancel directly — this raises a request to admin (§3.3).
