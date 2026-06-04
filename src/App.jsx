@@ -678,7 +678,8 @@ const ZONES = [
   "Other / outside Greater Cairo",
 ];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const SLOT_TIMES = ["09:00","11:00","13:00","15:00","17:00","19:00"];
+// All 24 hours of the day. Stored as 24h "HH:MM" keys; rendered in 12h AM/PM.
+const SLOT_TIMES = Array.from({length:24},(_,h)=>(h<10?"0":"")+h+":00");
 const PAY_STATUS = ["Paid","Pending","Partial","Waived","Refunded"];
 const PAY_METHOD = ["Cash","Instapay","Vodafone Cash","Bank Transfer","Other"];
 const payColor = {Paid:C.green,Pending:C.amber,Partial:"#D9714E",Waived:C.grey,Refunded:"#8E5BB5"};
@@ -1841,7 +1842,7 @@ function SlotGrid({slots,onToggle}){
   return(<div className="overflow-x-auto -mx-1 px-1">{DAYS.map(day=>(<div key={day} className="flex items-center gap-1 mb-1">
     <span className="w-9 text-[11px] font-semibold flex-shrink-0" style={{color:C.ink2}}>{day}</span>
     {SLOT_TIMES.map(t=>{const k=`${day}-${t}`;const on=slots.includes(k);return(
-      <button key={t} onClick={()=>onToggle(k)} className="flex-1 h-8 rounded-md text-[10px] font-semibold" style={{background:on?C.teal:"#F4F4F2",color:on?C.ink:C.grey,border:`1px solid ${on?C.teal:C.line}`}}>{t}</button>);})}
+      <button key={t} onClick={()=>onToggle(k)} className="flex-shrink-0 w-[52px] h-8 rounded-md text-[10px] font-semibold whitespace-nowrap" style={{background:on?C.teal:"#F4F4F2",color:on?C.ink:C.grey,border:`1px solid ${on?C.teal:C.line}`}}>{hourLabel12(Number(t.slice(0,2)))}</button>);})}
   </div>))}</div>);
 }
 
