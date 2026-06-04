@@ -1822,6 +1822,7 @@ function NoteReview({note,onAction}){
     {note.goals&&<NoteText label="Goals" value={note.goals}/>}
     {note.hep&&<NoteText label="Home exercise program" value={note.hep}/>}
     {note.education&&<NoteText label="Patient education" value={note.education}/>}
+    {note.additionalNotes&&<NoteText label="Additional notes" value={note.additionalNotes}/>}
     {note.nextSessionDate&&<div className="mb-4 flex items-center gap-1.5 text-[13px]" style={{color:C.ink2}}><Calendar size={13} color={C.teal}/>Next session booked: <b>{note.nextSessionDate}</b></div>}
     {c&&<textarea autoFocus placeholder="Teaching feedback for the doctor…" rows={2} className="w-full mb-3 px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={{border:`1px solid ${C.teal}`,background:"#F4FBFC"}}/>}
     <div className="flex gap-2 pt-3" style={{borderTop:`1px solid ${C.line}`}}>
@@ -2576,6 +2577,7 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
                 {n.goals&&<div><b>P · Goals:</b> <span className="whitespace-pre-wrap">{n.goals}</span></div>}
                 {n.hep&&<div><b>P · Home exercise program:</b> <span className="whitespace-pre-wrap">{n.hep}</span></div>}
                 {n.education&&<div><b>P · Patient education:</b> <span className="whitespace-pre-wrap">{n.education}</span></div>}
+                {n.additionalNotes&&<div><b>Notes:</b> <span className="whitespace-pre-wrap">{n.additionalNotes}</span></div>}
                 {n.nextSessionDate&&<div><b>Next session:</b> {n.nextSessionDate}</div>}
                 {n.redFlag&&<div style={{color:C.red}}><b>Red flag:</b> {n.redFlagNote||"reported"}</div>}
               </div>}
@@ -3083,6 +3085,7 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
   // structured SOAP narrative fields (all optional — quick logging still works)
   const[subjective,setSubjective]=useState(""),[objective,setObjective]=useState(""),[measures,setMeasures]=useState("");
   const[assessment,setAssessment]=useState(""),[goals,setGoals]=useState(lastAssess?.goals||""),[hep,setHep]=useState(lastAssess?.hep||""),[education,setEducation]=useState("");
+  const[additionalNotes,setAdditionalNotes]=useState("");
   const can=isAssess?!!dx:(pb!=null&&resp);
   return(<div className="pb-32">
     <div className="px-4 pt-8 pb-3" style={{background:C.ink}}>
@@ -3135,6 +3138,9 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
         <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Next session</div>
         <input type="date" value={nextDate} onChange={e=>setNextDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[15px] outline-none bg-white" style={{border:`1px solid ${C.line}`,color:nextDate?C.ink:C.grey}}/>
         <p className="text-[11px] mt-1.5 flex items-center gap-1.5" style={{color:C.grey}}><Calendar size={12}/>Schedules the upcoming session for this patient.</p></div>
+      {/* Free-form notes — anything that doesn't fit the SOAP boxes */}
+      <SoapSection letter="✎" label="Notes" hint="Anything else worth recording"/>
+      <NoteArea label="Additional notes" hint="free-form" value={additionalNotes} set={setAdditionalNotes} rows={3} placeholder="Any other observations, conversations, reminders or context for this session…"/>
       <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
         <div className="flex items-center justify-between"><span className="text-[14px] font-semibold" style={{color:C.ink2}}>Red flag?</span>
           <button onClick={()=>setRf(!rf)} className="w-12 h-7 rounded-full p-1" style={{background:rf?C.red:C.line}}><span className="block w-5 h-5 rounded-full bg-white" style={{transform:rf?"translateX(20px)":"none",transition:"transform .15s"}}/></button></div>
@@ -3143,7 +3149,7 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
     <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 pt-3 pb-5" style={{background:`linear-gradient(to top, ${C.bg} 75%, transparent)`}}>
       <button disabled={!can} onClick={()=>onSubmit({visitId:visit.id,patientId:patient.id,patientName:patient.name,doctorName:visit.doctorName,type:visit.type,
         painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,redFlag:rf,redFlagNote:rfn,dx,
-        subjective,objective,measures,assessment,goals,hep,education})}
+        subjective,objective,measures,assessment,goals,hep,education,additionalNotes})}
         className="w-full py-4 rounded-2xl font-bold text-[15px] text-white" style={{background:can?C.ink:"#C9CDD2",boxShadow:can?"0 8px 20px rgba(30,42,58,0.25)":"none"}}>
         {can?"Complete & submit for review":isAssess?"Add diagnosis to submit":"Log pain + response"}</button></div>
     <DxSheet open={sheet} onClose={()=>setSheet(false)} onPick={setDx}/>

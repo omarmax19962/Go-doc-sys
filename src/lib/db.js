@@ -172,6 +172,7 @@ export const fromNote = (r) => ({
   goals: r.goals || '',
   hep: r.hep || '',
   education: r.education || '',
+  additionalNotes: r.additional_notes || '',
 })
 export const toNote = (n) => ({
   patient_id: n.patientId,
@@ -198,6 +199,7 @@ export const toNote = (n) => ({
   goals: n.goals ? n.goals.trim() : null,
   hep: n.hep ? n.hep.trim() : null,
   education: n.education ? n.education.trim() : null,
+  additional_notes: n.additionalNotes ? n.additionalNotes.trim() : null,
 })
 
 // ---- EXERCISES ----
