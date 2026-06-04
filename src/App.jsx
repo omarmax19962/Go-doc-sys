@@ -1811,9 +1811,16 @@ function NoteReview({note,onAction}){
       <div className="rounded-xl p-3" style={{background:"#F4F4F2"}}><div className="text-[11px]" style={{color:C.grey}}>Response</div><div className="mt-2"><span className="text-[11px] font-semibold px-2.5 py-1 rounded-full capitalize" style={{background:respColor[note.response]+"22",color:respColor[note.response]}}>{note.response}</span></div></div>
       <div className="rounded-xl p-3" style={{background:"#F4F4F2"}}><div className="text-[11px]" style={{color:C.grey}}>Diagnosis</div><div className="text-[12px] font-semibold mt-1.5">{note.dx?note.dx.label:"—"}</div></div>
     </div>
+    {note.subjective&&<NoteText label={<><SoapTag letter="S"/>Subjective</>} value={note.subjective}/>}
+    {note.objective&&<NoteText label={<><SoapTag letter="O"/>Objective findings</>} value={note.objective}/>}
+    {note.measures&&<NoteText label="Tests & measures" value={note.measures}/>}
     {note.exercises?.length>0&&<Tags label="Exercises" items={note.exercises}/>}
     {note.modalities?.length>0&&<Tags label="Modalities" items={note.modalities}/>}
-    {note.plan&&<div className="mb-4"><div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{color:C.grey}}>Plan</div><div className="text-[13px]" style={{color:C.ink2}}>{note.plan}</div></div>}
+    {note.assessment&&<NoteText label={<><SoapTag letter="A"/>Clinical assessment</>} value={note.assessment}/>}
+    {note.plan&&<NoteText label={<><SoapTag letter="P"/>Plan</>} value={note.plan}/>}
+    {note.goals&&<NoteText label="Goals" value={note.goals}/>}
+    {note.hep&&<NoteText label="Home exercise program" value={note.hep}/>}
+    {note.education&&<NoteText label="Patient education" value={note.education}/>}
     {note.nextSessionDate&&<div className="mb-4 flex items-center gap-1.5 text-[13px]" style={{color:C.ink2}}><Calendar size={13} color={C.teal}/>Next session booked: <b>{note.nextSessionDate}</b></div>}
     {c&&<textarea autoFocus placeholder="Teaching feedback for the doctor…" rows={2} className="w-full mb-3 px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={{border:`1px solid ${C.teal}`,background:"#F4FBFC"}}/>}
     <div className="flex gap-2 pt-3" style={{borderTop:`1px solid ${C.line}`}}>
@@ -1824,6 +1831,10 @@ function NoteReview({note,onAction}){
 }
 const Tags=({label,items})=>(<div className="mb-4"><div className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{color:C.grey}}>{label}</div>
   <div className="flex flex-wrap gap-2">{items.map(e=><span key={e} className="text-[12px] px-2.5 py-1.5 rounded-lg" style={{background:"#F4FBFC",color:C.ink,border:`1px solid ${C.tealSoft}`}}>{e}</span>)}</div></div>);
+// One labelled free-text block; renders nothing when empty.
+const NoteText=({label,value})=> value?(<div className="mb-3"><div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{color:C.grey}}>{label}</div><div className="text-[13px] whitespace-pre-wrap" style={{color:C.ink2}}>{value}</div></div>):null;
+// Small S/O/A/P letter chip used to head a group of narrative blocks.
+const SoapTag=({letter})=>(<span className="inline-flex w-5 h-5 rounded items-center justify-center text-[11px] font-bold text-white mr-1.5 align-middle" style={{background:C.ink}}>{letter}</span>);
 
 /* ---------- weekly availability grid (days × time slots) ---------- */
 function SlotGrid({slots,onToggle}){
@@ -2553,10 +2564,17 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
               </button>
               {o&&<div className="px-5 pb-4 space-y-1.5 text-[13px]" style={{color:C.ink2}}>
                 <div><b>Doctor:</b> {n.doctorName}</div>
-                {n.dx&&<div><b>Diagnosis:</b> {n.dx.code?`${n.dx.code} · `:""}{n.dx.label}</div>}
+                {n.subjective&&<div><b>S · Subjective:</b> <span className="whitespace-pre-wrap">{n.subjective}</span></div>}
+                {n.objective&&<div><b>O · Objective:</b> <span className="whitespace-pre-wrap">{n.objective}</span></div>}
+                {n.measures&&<div><b>O · Tests &amp; measures:</b> <span className="whitespace-pre-wrap">{n.measures}</span></div>}
                 {n.exercises?.length>0&&<div><b>Exercises:</b> {n.exercises.join(", ")}</div>}
                 {n.modalities?.length>0&&<div><b>Modalities:</b> {n.modalities.join(", ")}</div>}
-                {n.plan&&<div><b>Plan:</b> {n.plan}</div>}
+                {n.dx&&<div><b>A · Diagnosis:</b> {n.dx.code?`${n.dx.code} · `:""}{n.dx.label}</div>}
+                {n.assessment&&<div><b>A · Assessment:</b> <span className="whitespace-pre-wrap">{n.assessment}</span></div>}
+                {n.plan&&<div><b>P · Plan:</b> <span className="whitespace-pre-wrap">{n.plan}</span></div>}
+                {n.goals&&<div><b>P · Goals:</b> <span className="whitespace-pre-wrap">{n.goals}</span></div>}
+                {n.hep&&<div><b>P · Home exercise program:</b> <span className="whitespace-pre-wrap">{n.hep}</span></div>}
+                {n.education&&<div><b>P · Patient education:</b> <span className="whitespace-pre-wrap">{n.education}</span></div>}
                 {n.nextSessionDate&&<div><b>Next session:</b> {n.nextSessionDate}</div>}
                 {n.redFlag&&<div style={{color:C.red}}><b>Red flag:</b> {n.redFlagNote||"reported"}</div>}
               </div>}
@@ -3030,6 +3048,28 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
   </div>);
 }
 
+// SOAP section divider (S / O / A / P)
+function SoapSection({letter,label,hint}){
+  return(<div className="flex items-center gap-2 pt-3 pb-0.5">
+    <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[12px] font-bold text-white shrink-0" style={{background:C.ink}}>{letter}</span>
+    <div><div className="text-[13px] font-bold leading-tight" style={{color:C.ink}}>{label}</div>{hint&&<div className="text-[10.5px] leading-tight" style={{color:C.grey}}>{hint}</div>}</div>
+  </div>);
+}
+// Free-text narrative card used across the SOAP form. Module-scope so its
+// identity is stable between renders (keeps the textarea from losing focus).
+function NoteArea({label,hint,value,set,placeholder,rows=2}){
+  return(<div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
+    <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>{label}{hint&&<span className="font-medium normal-case" style={{color:C.grey}}> · {hint}</span>}</div>
+    <textarea value={value} onChange={e=>set(e.target.value)} rows={rows} placeholder={placeholder} className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={{border:`1px solid ${C.line}`}}/>
+  </div>);
+}
+// 0–10 pain scale card.
+function PainScaleCard({label,val,set}){
+  return(<div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
+    <div className="flex justify-between items-baseline mb-2"><span className="text-[13px] font-semibold" style={{color:C.ink2}}>{label}</span><span className="text-[20px] font-bold" style={{color:val==null?C.line:painColor(val)}}>{val==null?"–":val}</span></div>
+    <div className="grid grid-cols-11 gap-1">{Array.from({length:11}).map((_,n)=><button key={n} onClick={()=>set(n)} className="h-9 rounded-md text-[12px] font-semibold" style={{background:val===n?painColor(n):"#fff",color:val===n?"#fff":C.ink2,border:`1px solid ${val===n?painColor(n):C.line}`}}>{n}</button>)}</div>
+  </div>);
+}
 function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
   const{visit,patient}=ctx;const isAssess=visit.type==="Assessment";
   /* seamless data flow: prefill follow-up from latest assessment note for this patient */
@@ -3039,6 +3079,9 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
   const[dx,setDx]=useState(patient.dx||lastAssess?.dx||null),[sheet,setSheet]=useState(false);
   const[plan,setPlan]=useState(lastAssess?.plan||"");
   const[customEx,setCustomEx]=useState([]),[newEx,setNewEx]=useState(""),[nextDate,setNextDate]=useState("");
+  // structured SOAP narrative fields (all optional — quick logging still works)
+  const[subjective,setSubjective]=useState(""),[objective,setObjective]=useState(""),[measures,setMeasures]=useState("");
+  const[assessment,setAssessment]=useState(""),[goals,setGoals]=useState(lastAssess?.goals||""),[hep,setHep]=useState(lastAssess?.hep||""),[education,setEducation]=useState("");
   const can=isAssess?!!dx:(pb!=null&&resp);
   return(<div className="pb-32">
     <div className="px-4 pt-8 pb-3" style={{background:C.ink}}>
@@ -3047,13 +3090,15 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
       <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:C.teal,color:C.ink}}>{visit.type}</span></div>
     <div className="px-4 pt-4 space-y-3">
       {!isAssess&&lastAssess&&<div className="rounded-xl px-3.5 py-2.5 flex gap-2" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`}}><Activity size={15} color="#2E6E73" className="flex-shrink-0 mt-0.5"/><p className="text-[12px]" style={{color:C.ink2}}>Carried from assessment: <b>{lastAssess.dx?.label||"dx"}</b>. No need to re-enter.</p></div>}
-      <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${dx?C.teal:C.line}`}}>
-        <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Diagnosis{isAssess&&!dx&&<span style={{color:C.amber}}> · required at assessment</span>}</div>
-        {dx?<button onClick={()=>setSheet(true)} className="flex items-center gap-2 text-[15px]"><span className="text-[11px] font-bold px-2 py-1 rounded" style={{background:"#EAF6F7",color:"#2E6E73"}}>{dx.code||"free"}</span>{dx.label}<Pencil size={14} color={C.grey}/></button>
-          :<button onClick={()=>setSheet(true)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}><Plus size={16}/>Add diagnosis</button>}</div>
-      {[["Pain before",pb,setPb],["Pain after",pa,setPa]].map(([l,val,set])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
-        <div className="flex justify-between items-baseline mb-2"><span className="text-[13px] font-semibold" style={{color:C.ink2}}>{l}</span><span className="text-[20px] font-bold" style={{color:val==null?C.line:painColor(val)}}>{val==null?"–":val}</span></div>
-        <div className="grid grid-cols-11 gap-1">{Array.from({length:11}).map((_,n)=><button key={n} onClick={()=>set(n)} className="h-9 rounded-md text-[12px] font-semibold" style={{background:val===n?painColor(n):"#fff",color:val===n?"#fff":C.ink2,border:`1px solid ${val===n?painColor(n):C.line}`}}>{n}</button>)}</div></div>))}
+      {/* S — SUBJECTIVE */}
+      <SoapSection letter="S" label="Subjective" hint="What the patient reports"/>
+      <NoteArea label="Subjective" hint="chief complaint · OLDCART · goals" value={subjective} set={setSubjective} rows={3} placeholder="Patient's reported symptoms today — onset, location, duration, character, aggravating / relieving factors, timing — and what they want to achieve."/>
+      <PainScaleCard label="Pain before" val={pb} set={setPb}/>
+
+      {/* O — OBJECTIVE */}
+      <SoapSection letter="O" label="Objective" hint="What you observe & measure"/>
+      <NoteArea label="Objective findings" hint="observation · palpation · gait · posture · swelling" value={objective} set={setObjective} rows={3} placeholder="Muscle tightness, tenderness on palpation, gait / posture abnormalities, visible deformity or swelling…"/>
+      <NoteArea label="Tests & measures" hint="ROM · MMT/strength · special tests · outcome scores" value={measures} set={setMeasures} rows={3} placeholder="e.g. Knee flexion ROM 0–110°, quadriceps MMT 4/5, SLR negative, LEFS 48/80…"/>
       <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
         <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Exercises done</div>
         <div className="space-y-2">{[...exerciseLib.map(e=>({name:e.name,hint:e.dosageHint||"",lib:true})),...customEx.map(c=>({name:c,hint:"",lib:false}))].map(e=>{const label=e.hint?`${e.name} · ${e.hint}`:e.name;const on=!!ex[label];return(<button key={label} onClick={()=>setEx(d=>({...d,[label]:!d[label]}))} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left" style={{border:`1px solid ${on?C.teal:C.line}`,background:on?"#F4FBFC":"#fff"}}>
@@ -3066,12 +3111,25 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
         <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Modalities</div>
         <div className="flex flex-wrap gap-2">{modalityLib.map(m=>{const on=!!mod[m.name];return(<button key={m.name} onClick={()=>setMod(d=>({...d,[m.name]:!d[m.name]}))} className="px-3 py-2 rounded-xl text-left" style={{border:`1px solid ${on?C.teal:C.line}`,background:on?"#F4FBFC":"#fff"}}>
           <div className="text-[13px] font-semibold flex items-center gap-1.5">{on&&<Check size={13} color={C.teal} strokeWidth={3}/>}{m.name}</div>{m.params&&<div className="text-[11px]" style={{color:C.grey}}>{m.params}</div>}</button>);})}</div></div>
+      <PainScaleCard label="Pain after" val={pa} set={setPa}/>
+
+      {/* A — ASSESSMENT */}
+      <SoapSection letter="A" label="Assessment" hint="Your clinical judgement"/>
+      <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${dx?C.teal:C.line}`}}>
+        <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Diagnosis{isAssess&&!dx&&<span style={{color:C.amber}}> · required at assessment</span>}</div>
+        {dx?<button onClick={()=>setSheet(true)} className="flex items-center gap-2 text-[15px]"><span className="text-[11px] font-bold px-2 py-1 rounded" style={{background:"#EAF6F7",color:"#2E6E73"}}>{dx.code||"free"}</span>{dx.label}<Pencil size={14} color={C.grey}/></button>
+          :<button onClick={()=>setSheet(true)} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-[14px] font-semibold" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}><Plus size={16}/>Add diagnosis</button>}</div>
+      <NoteArea label="Clinical assessment" hint="progress · interpretation · rehab potential" value={assessment} set={setAssessment} rows={3} placeholder="Interpretation of findings, progress vs. last visit, functional impairment, rehabilitation potential and rationale for treatment decisions."/>
       <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
         <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Response</div>
         <div className="grid grid-cols-4 gap-2">{["better","same","mixed","worse"].map(k=><button key={k} onClick={()=>setResp(k)} className="py-2.5 rounded-xl text-[12px] font-semibold capitalize" style={{background:resp===k?respColor[k]:"#fff",color:resp===k?"#fff":C.ink2,border:`1px solid ${resp===k?respColor[k]:C.line}`}}>{k}</button>)}</div></div>
-      {isAssess&&<div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
-        <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Plan</div>
-        <textarea value={plan} onChange={e=>setPlan(e.target.value)} rows={2} placeholder="Program / progression — carries to follow-ups" className="w-full px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={{border:`1px solid ${C.line}`}}/></div>}
+
+      {/* P — PLAN */}
+      <SoapSection letter="P" label="Plan" hint="Where treatment goes next"/>
+      <NoteArea label="Plan" hint="interventions · frequency · progression" value={plan} set={setPlan} rows={2} placeholder="Program / progression and visit frequency (e.g. manual therapy + therapeutic exercise, 2×/week × 6 weeks). Carries to follow-ups."/>
+      <NoteArea label="Goals" hint="SMART · measurable · time-bound" value={goals} set={setGoals} rows={2} placeholder="e.g. Restore pain-free knee flexion to 130° within 6 weeks; return to running by week 8."/>
+      <NoteArea label="Home exercise program" hint="HEP · sets × reps × frequency" value={hep} set={setHep} rows={2} placeholder="Exercises with sets / reps and how often to perform them at home…"/>
+      <NoteArea label="Patient education" value={education} set={setEducation} rows={2} placeholder="Condition management, injury-prevention strategies and adherence advice given to the patient…"/>
       <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
         <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Next session</div>
         <input type="date" value={nextDate} onChange={e=>setNextDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[15px] outline-none bg-white" style={{border:`1px solid ${C.line}`,color:nextDate?C.ink:C.grey}}/>
@@ -3083,7 +3141,8 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
     </div>
     <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 pt-3 pb-5" style={{background:`linear-gradient(to top, ${C.bg} 75%, transparent)`}}>
       <button disabled={!can} onClick={()=>onSubmit({visitId:visit.id,patientId:patient.id,patientName:patient.name,doctorName:visit.doctorName,type:visit.type,
-        painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,redFlag:rf,redFlagNote:rfn,dx})}
+        painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,redFlag:rf,redFlagNote:rfn,dx,
+        subjective,objective,measures,assessment,goals,hep,education})}
         className="w-full py-4 rounded-2xl font-bold text-[15px] text-white" style={{background:can?C.ink:"#C9CDD2",boxShadow:can?"0 8px 20px rgba(30,42,58,0.25)":"none"}}>
         {can?"Complete & submit for review":isAssess?"Add diagnosis to submit":"Log pain + response"}</button></div>
     <DxSheet open={sheet} onClose={()=>setSheet(false)} onPick={setDx}/>

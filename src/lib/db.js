@@ -164,6 +164,14 @@ export const fromNote = (r) => ({
   state: r.state,
   openedAt: r.opened_at,
   reviewedAt: r.reviewed_at,
+  // structured SOAP narrative fields
+  subjective: r.subjective || '',
+  objective: r.objective || '',
+  measures: r.measures || '',
+  assessment: r.assessment || '',
+  goals: r.goals || '',
+  hep: r.hep || '',
+  education: r.education || '',
 })
 export const toNote = (n) => ({
   patient_id: n.patientId,
@@ -183,6 +191,13 @@ export const toNote = (n) => ({
   red_flag: !!n.redFlag,
   red_flag_note: n.redFlagNote,
   state: n.state || 'submitted',
+  subjective: n.subjective ? n.subjective.trim() : null,
+  objective: n.objective ? n.objective.trim() : null,
+  measures: n.measures ? n.measures.trim() : null,
+  assessment: n.assessment ? n.assessment.trim() : null,
+  goals: n.goals ? n.goals.trim() : null,
+  hep: n.hep ? n.hep.trim() : null,
+  education: n.education ? n.education.trim() : null,
 })
 
 // ---- EXERCISES ----
