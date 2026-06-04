@@ -932,7 +932,7 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,requestReschedule,bookSession,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1083,7 +1083,7 @@ function _LegacyMockApp(){
 }
 
 /* =============================== ADMIN =============================== */
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
@@ -1274,7 +1274,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     </div>
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc)=>{addPatient(p,b,d,doc);setIntake(false);}}/>}
-    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} doctors={doctors} bookSession={bookSession} rescheduleVisit={rescheduleVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient}/>}
+    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} doctors={doctors} bookSession={bookSession} rescheduleVisit={rescheduleVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient} submitNote={submitNote} exerciseLib={exerciseLib} modalityLib={modalityLib}/>}
     {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
     {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
   </div>);
@@ -2156,7 +2156,7 @@ function PainTrend({data,height=170}){
   </AreaChart></ResponsiveContainer>);
 }
 
-function UpcomingSessionRow({v,rescheduleVisit}){
+function UpcomingSessionRow({v,rescheduleVisit,onAddDetails}){
   const[d,setD]=useState(v.date||"");const[t,setT]=useState(v.time&&v.time!=="—"?v.time:"");const[saved,setSaved]=useState(false);
   const dirty=(d||"")!==(v.date||"")||(t||"")!==((v.time&&v.time!=="—")?v.time:"");
   const save=async()=>{await rescheduleVisit(v.id,{date:d||null,time:t||null});setSaved(true);setTimeout(()=>setSaved(false),1500);};
@@ -2165,7 +2165,10 @@ function UpcomingSessionRow({v,rescheduleVisit}){
     <input type="date" value={d} onChange={e=>setD(e.target.value)} className="px-2 py-1.5 rounded-lg text-[12px] outline-none" style={{border:`1px solid ${C.line}`,color:d?C.ink:C.grey}}/>
     <input type="time" value={t} onChange={e=>setT(e.target.value)} step="900" className="px-2 py-1.5 rounded-lg text-[12px] outline-none" style={{border:`1px solid ${C.line}`,color:t?C.ink:C.grey}}/>
     {!v.date&&<span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{background:C.amber+"22",color:"#9a6a00"}}>No date</span>}
-    <button disabled={!dirty} onClick={save} className="ml-auto text-[11px] font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{background:saved?C.green:C.ink,color:"#fff"}}>{saved?"Saved ✓":"Set date"}</button>
+    <div className="ml-auto flex items-center gap-2">
+      <button disabled={!dirty} onClick={save} className="text-[11px] font-bold px-3 py-1.5 rounded-lg disabled:opacity-40" style={{background:saved?C.green:C.ink,color:"#fff"}}>{saved?"Saved ✓":"Set date"}</button>
+      {onAddDetails&&<button onClick={()=>onAddDetails(v)} className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg" style={{background:"#F4FBFC",color:C.ink,border:`1px solid ${C.tealSoft}`}}><Plus size={13}/>Add details</button>}
+    </div>
   </div>);
 }
 /* ---------- EditPatientForm — admin edits a patient's profile fields ---------- */
@@ -2207,8 +2210,9 @@ function EditPatientForm({patient,onSave,onCancel}){
   </div>);
 }
 
-function PatientFile({patient,notes,finances,visits,doctors,bookSession,rescheduleVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,updatePatient,role="admin"}){
+function PatientFile({patient,notes,finances,visits,doctors,bookSession,rescheduleVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,updatePatient,submitNote,exerciseLib,modalityLib,role="admin"}){
   const[confirmDel,setConfirmDel]=useState(false);
+  const[soapVisit,setSoapVisit]=useState(null);
   const[booking,setBooking]=useState(false);
   const hist=notes.filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
   const data=hist.map((n,i)=>({s:`S${i+1}`,date:n.date,before:n.painBefore,after:n.painAfter}));
@@ -2233,6 +2237,11 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
   const SUBS=[["overview","Overview"],["sessions","Sessions"],["docs","Documents"],...(role==="admin"?[["finance","Finance"]]:[])];
   const Info=({label,value})=>(<div><div className="text-[11px]" style={{color:C.grey}}>{label}</div><div className="text-[13px] font-semibold" style={{color:C.ink}}>{value||"—"}</div></div>);
 
+  if(soapVisit&&submitNote)return(<div className="fixed inset-0 z-50 overflow-y-auto" style={{background:C.bg}}>
+    <div className="mx-auto max-w-[430px] min-h-screen relative">
+      <Logger ctx={{visit:soapVisit,patient}} notes={notes} exerciseLib={exerciseLib||[]} modalityLib={modalityLib||[]} onBack={()=>setSoapVisit(null)} onSubmit={n=>{submitNote(n);setSoapVisit(null);}}/>
+    </div>
+  </div>);
   return(<div className="fixed inset-0 z-40 flex justify-center overflow-y-auto py-6" style={{background:"rgba(30,42,58,0.5)"}}>
     <div className="w-full max-w-[840px] mx-4 rounded-3xl self-start" style={{background:C.bg}}>
       {/* header */}
@@ -2312,17 +2321,19 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
         {role==="admin"&&rescheduleVisit&&(()=>{const up=upcoming.filter(v=>v.status!=="cancelled"&&v.status!=="rescheduled").slice().sort((a,b)=>(a.date||"9999").localeCompare(b.date||"9999"));const undated=up.filter(v=>!v.date).length;return up.length>0?(
           <div className="bg-white rounded-2xl overflow-hidden mb-4" style={{border:`1px solid ${C.line}`}}>
             <div className="px-5 py-2.5 flex items-center justify-between" style={{background:"#F4F4F2"}}><span className="text-[11px] font-bold uppercase tracking-wider" style={{color:C.grey}}>{up.length} upcoming session{up.length>1?"s":""}{undated>0?` · ${undated} need a date`:""}</span></div>
-            {up.map(v=><UpcomingSessionRow key={v.id} v={v} rescheduleVisit={rescheduleVisit}/>)}
+            {up.map(v=><UpcomingSessionRow key={v.id} v={v} rescheduleVisit={rescheduleVisit} onAddDetails={role==="admin"&&submitNote?setSoapVisit:undefined}/>)}
           </div>):null;})()}
         {(()=>{const uv=undocVisits.filter(v=>!tlType||v.type===tlType);return uv.length>0?(
           <div className="bg-white rounded-2xl overflow-hidden mb-4" style={{border:`1px solid ${C.line}`}}>
             <div className="px-5 py-2.5" style={{background:"#FFF8EC"}}><span className="text-[11px] font-bold uppercase tracking-wider" style={{color:"#9a6a00"}}>{uv.length} completed · SOAP not filed yet</span></div>
             {uv.slice().reverse().map(v=>(
-              <div key={v.id} className="px-5 py-3 flex items-center gap-4" style={{borderTop:`1px solid ${C.line}`}}>
+              <div key={v.id} className="px-5 py-3 flex items-center gap-3 flex-wrap" style={{borderTop:`1px solid ${C.line}`}}>
                 <span className="text-[12px] tabular-nums w-20" style={{color:C.grey}}>{v.date||"no date"}</span>
                 <span className="text-[12px] font-semibold w-24">{VISIT_TYPE_LABEL[v.type]||v.type}</span>
                 <span className="text-[12px]" style={{color:C.grey}}>{v.doctorName||"—"}</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto" style={{background:C.amber+"22",color:"#9a6a00"}}>SOAP missing</span>
+                {role==="admin"&&submitNote
+                  ? <button onClick={()=>setSoapVisit(v)} className="ml-auto flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg text-white" style={{background:C.ink}}><Plus size={13}/>Add details</button>
+                  : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto" style={{background:C.amber+"22",color:"#9a6a00"}}>SOAP missing</span>}
               </div>))}
           </div>):null;})()}
         <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
@@ -2797,7 +2808,7 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
           <button onClick={()=>setRf(!rf)} className="w-12 h-7 rounded-full p-1" style={{background:rf?C.red:C.line}}><span className="block w-5 h-5 rounded-full bg-white" style={{transform:rf?"translateX(20px)":"none",transition:"transform .15s"}}/></button></div>
         {rf&&<textarea value={rfn} onChange={e=>setRfn(e.target.value)} autoFocus rows={2} placeholder="Describe — escalates to admin" className="w-full mt-3 px-3 py-2.5 rounded-xl text-[14px] outline-none resize-none" style={{border:`1px solid ${C.red}`,background:"#FDF3F1"}}/>}</div>
     </div>
-    <div className="fixed bottom-0 w-full max-w-[430px] px-4 pt-3 pb-5" style={{background:`linear-gradient(to top, ${C.bg} 75%, transparent)`}}>
+    <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 pt-3 pb-5" style={{background:`linear-gradient(to top, ${C.bg} 75%, transparent)`}}>
       <button disabled={!can} onClick={()=>onSubmit({visitId:visit.id,patientId:patient.id,patientName:patient.name,doctorName:visit.doctorName,type:visit.type,
         painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,redFlag:rf,redFlagNote:rfn,dx})}
         className="w-full py-4 rounded-2xl font-bold text-[15px] text-white" style={{background:can?C.ink:"#C9CDD2",boxShadow:can?"0 8px 20px rgba(30,42,58,0.25)":"none"}}>
