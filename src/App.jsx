@@ -19,8 +19,9 @@ import Login from "./components/Login";
    isolated from doctors. Flip the role switch up top to see data connect.
    ============================================================================ */
 
-const C = { bg:"#ECECEA", ink:"#1E2A3A", ink2:"#2E3440", teal:"#7DD8DF", tealSoft:"#9BD5DD",
-  line:"#DCDCD8", grey:"#8794A1", amber:"#E0A458", green:"#3FA796", red:"#C0392B" };
+const C = { bg:"#F3F6F7", ink:"#1E2A3A", ink2:"#2E3440", teal:"#7DD8DF", tealSoft:"#9BD5DD",
+  line:"#E6EBEE", grey:"#8794A1", amber:"#E0A458", green:"#3FA796", red:"#C0392B" };
+const HEAD = "'Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif";
 
 /* ICD-10-CM source: scraped from icd10data.com (M+G+S chapters), inlined here as a
    const so the single-file prototype runs in the artifact renderer (no filesystem).
@@ -896,11 +897,11 @@ export default function App(){
 }
 
 function FullScreenLoading({ label }){
-  return <div className="min-h-screen flex items-center justify-center" style={{background:"#C9CDC9",color:C.ink}}>{label}</div>;
+  return <div className="min-h-screen flex items-center justify-center" style={{background:"#DCE2E4",color:C.ink}}>{label}</div>;
 }
 function FullScreenError({ msg, onSignOut }){
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 text-center" style={{background:"#C9CDC9",color:C.ink}}>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-8 text-center" style={{background:"#DCE2E4",color:C.ink}}>
       <div className="max-w-md">{msg}</div>
       <button onClick={onSignOut} className="px-4 py-2 rounded-lg font-bold text-sm" style={{background:C.teal,color:C.ink}}>Sign out</button>
     </div>
@@ -925,7 +926,7 @@ function AppWithData({ role, me, onSignOut }){
   const pending = notes.filter(n=>n.state==="submitted").length;
 
   return(
-    <div className="min-h-screen flex flex-col items-center" style={{background:"#C9CDC9"}}>
+    <div className="min-h-screen flex flex-col items-center" style={{background:"#DCE2E4"}}>
       <div className="w-full flex items-center justify-between gap-2 py-2.5 px-4" style={{background:C.ink2}}>
         <span className="text-[11px] uppercase tracking-wider" style={{color:C.tealSoft}}>Signed in as {me} · {role}</span>
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
@@ -1068,7 +1069,7 @@ function _LegacyMockApp(){
   const pending=notes.filter(n=>n.state==="submitted").length;
 
   return(
-    <div className="min-h-screen flex flex-col items-center" style={{background:"#C9CDC9"}}>
+    <div className="min-h-screen flex flex-col items-center" style={{background:"#DCE2E4"}}>
       <div className="w-full flex items-center justify-center gap-2 py-2.5" style={{background:C.ink2}}>
         <span className="text-[11px] uppercase tracking-wider" style={{color:C.tealSoft}}>View as</span>
         {["admin","doctor"].map(r=>(<button key={r} onClick={()=>setRole(r)} className="px-4 py-1.5 rounded-full text-[12px] font-bold capitalize"
@@ -1104,32 +1105,32 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
   const fQueue=queue.filter(n=>(!rF.doctor||n.doctorName===rF.doctor)&&(!rF.type||n.type===rF.type)&&(!rF.red||n.redFlag));
 
   return(<div className="w-full max-w-[1040px] min-h-screen flex flex-col" style={{background:C.bg}}>
-    <header className="flex items-center justify-between px-6 py-4" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
-      <h1 className="text-[22px] font-bold capitalize" style={{fontFamily:"Georgia,serif",color:C.ink}}>{tab}</h1>
-      <div className="flex items-center gap-3">
+    <header className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
+      <h1 className="text-[19px] sm:text-[22px] font-extrabold capitalize" style={{fontFamily:HEAD,color:C.ink}}>{tab}</h1>
+      <div className="flex items-center gap-2 sm:gap-3">
         <NotifBell items={(notifs||[]).filter(n=>n.target==="admin")} onOpen={()=>markRead&&markRead("admin")}/>
-        <button onClick={()=>setIntake(true)} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white font-semibold text-[14px]" style={{background:C.ink}}><Plus size={16}/>New patient</button>
+        <button onClick={()=>setIntake(true)} className="flex items-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-white font-semibold text-[14px] shrink-0" style={{background:C.ink}}><Plus size={16}/><span className="hidden sm:inline">New patient</span><span className="sm:hidden">New</span></button>
       </div>
     </header>
-    <div className="flex gap-1 px-6 py-2 overflow-x-auto" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
-      {tabs.map(([k,l,Icon])=>(<button key={k} onClick={()=>setTab(k)} className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-[13px] font-semibold whitespace-nowrap" style={{background:tab===k?C.ink:"transparent",color:tab===k?"#fff":C.ink2}}>
+    <div className="flex gap-1 px-4 sm:px-6 py-2.5 overflow-x-auto" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
+      {tabs.map(([k,l,Icon])=>(<button key={k} onClick={()=>setTab(k)} className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold whitespace-nowrap" style={{background:tab===k?C.teal:"transparent",color:tab===k?C.ink:C.grey}}>
         <Icon size={15}/>{l}{k==="review"&&pending>0&&<span className="text-[11px] px-1.5 rounded-full font-bold" style={{background:C.red,color:"#fff"}}>{pending}</span>}</button>))}
     </div>
 
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6">
       {/* TODAY — KPIs + at-a-glance charts, then the visit list */}
       {tab==="today"&&<>
-        <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           {[["Visits today",visits.length,C.ink],["Completed",visits.filter(v=>v.status==="completed").length,C.green],["In queue",pending,C.amber],["Active patients",patients.filter(p=>p.status==="active").length,"#2E6E73"]].map(([l,n,c])=>(
             <div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[28px] font-bold mt-0.5" style={{color:c}}>{n}</div></div>))}
         </div>
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-            <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:"Georgia,serif"}}>Visits by doctor</h3>
+            <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:HEAD}}>Visits by doctor</h3>
             <ResponsiveContainer width="100%" height={150}><BarChart data={byDoctorVisits}><XAxis dataKey="name" tick={{fontSize:11,fill:C.grey}} axisLine={false} tickLine={false}/><YAxis allowDecimals={false} tick={{fontSize:11,fill:C.grey}} axisLine={false} tickLine={false} width={20}/><Bar dataKey="v" radius={[6,6,0,0]} fill={C.teal}/></BarChart></ResponsiveContainer>
           </div>
           <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-            <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:"Georgia,serif"}}>Patient status mix</h3>
+            <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:HEAD}}>Patient status mix</h3>
             <div className="flex items-center gap-4"><ResponsiveContainer width="55%" height={150}><PieChart><Pie data={statusMix} dataKey="v" nameKey="name" innerRadius={38} outerRadius={62} paddingAngle={3}>{statusMix.map(s=><Cell key={s.key} fill={statusColor[s.key]}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer>
               <div className="space-y-1.5">{statusMix.map(s=><div key={s.key} className="flex items-center gap-2 text-[12px]"><span className="w-3 h-3 rounded-sm" style={{background:statusColor[s.key]}}/>{s.name}<b className="ml-1">{s.v}</b></div>)}</div></div>
           </div>
@@ -1201,7 +1202,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
       </div>
       {confirmBulk&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={()=>setConfirmBulk(null)}>
         <div className="w-full max-w-[420px] rounded-2xl p-6" style={{background:"#fff"}} onClick={e=>e.stopPropagation()}>
-          <div className="flex items-center gap-2.5 mb-2"><AlertTriangle size={20} color={C.red}/><h3 className="text-[17px] font-bold" style={{color:C.ink,fontFamily:"Georgia,serif"}}>Delete {confirmBulk.label}?</h3></div>
+          <div className="flex items-center gap-2.5 mb-2"><AlertTriangle size={20} color={C.red}/><h3 className="text-[17px] font-bold" style={{color:C.ink,fontFamily:HEAD}}>Delete {confirmBulk.label}?</h3></div>
           <p className="text-[13px] mb-4" style={{color:C.ink2}}>This permanently removes {confirmBulk.label} and all their sessions, SOAP notes and packages. Finance records (kept by name) stay in the books. This cannot be undone.</p>
           <div className="flex justify-end gap-2">
             <button onClick={()=>setConfirmBulk(null)} className="px-4 py-2 rounded-xl text-[13px] font-semibold" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Cancel</button>
@@ -1222,7 +1223,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
             <div key={pk.id} className="bg-white rounded-2xl p-5" style={{border:`1px solid ${pk.status==="ended"?C.line:C.tealSoft}`,opacity:pk.status==="ended"?0.7:1}}>
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="font-bold text-[16px] flex items-center gap-2" style={{fontFamily:"Georgia,serif",color:C.ink}}>{pk.title||"Treatment plan"}
+                  <div className="font-bold text-[16px] flex items-center gap-2" style={{fontFamily:HEAD,color:C.ink}}>{pk.title||"Treatment plan"}
                     {pk.status==="ended"&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:C.grey+"22",color:C.grey}}>ENDED</span>}
                     {pk.mode==="prescheduled"&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:"#EAF6F7",color:"#2E6E73"}}>pre-scheduled</span>}</div>
                   <div className="text-[12.5px] mt-0.5" style={{color:C.grey}}>{pk.patientName} · {pk.doctorName||"no doctor"}</div>
@@ -1232,7 +1233,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
                   {pk.status!=="ended"&&<button onClick={()=>setManagePkg(pk.id)} className="text-[12px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Manage</button>}
                 </div>
               </div>
-              <div className="grid grid-cols-4 gap-3 mt-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
                 {[["Completed",`${pr.completed}/${pr.total}`,C.green],["Scheduled",pr.scheduled,C.teal],["Unscheduled",pr.unscheduled,C.amber],["Next session",pr.next||"—",C.ink]].map(([l,v,c])=>(
                   <div key={l} className="rounded-xl px-3 py-2.5" style={{background:C.bg}}><div className="text-[11px]" style={{color:C.grey}}>{l}</div><div className="text-[15px] font-bold tabular-nums" style={{color:c}}>{v}</div></div>))}
               </div>
@@ -1393,7 +1394,7 @@ function TimeGridHeader({title,view,setView,step,goToday}){
       <button onClick={()=>step(-1)} className="w-8 h-8 rounded-lg flex items-center justify-center bg-white" style={{border:`1px solid ${C.line}`}}><ChevronLeft size={16} color={C.ink2}/></button>
       <button onClick={()=>step(1)} className="w-8 h-8 rounded-lg flex items-center justify-center bg-white" style={{border:`1px solid ${C.line}`}}><ChevronRight size={16} color={C.ink2}/></button>
       <button onClick={goToday} className="px-3 h-8 rounded-lg text-[13px] font-semibold bg-white" style={{border:`1px solid ${C.line}`,color:C.ink}}>Today</button>
-      <h2 className="text-[16px] font-bold ml-1" style={{fontFamily:"Georgia,serif",color:C.ink}}>{title}</h2>
+      <h2 className="text-[16px] font-bold ml-1" style={{fontFamily:HEAD,color:C.ink}}>{title}</h2>
     </div>
     <div className="flex gap-1 p-1 rounded-xl" style={{background:"#fff",border:`1px solid ${C.line}`}}>
       {[["day","Day"],["week","Week"],["month","Month"]].map(([k,l])=>(<button key={k} onClick={()=>setView(k)} className="px-3 py-1.5 rounded-lg text-[12.5px] font-semibold" style={{background:view===k?C.ink:"transparent",color:view===k?"#fff":C.ink2}}>{l}</button>))}
@@ -1433,7 +1434,7 @@ function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onC
   return(<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.5)"}} onClick={onClose}>
     <div className="w-full max-w-[440px] rounded-3xl overflow-hidden" style={{background:C.bg}} onClick={e=>e.stopPropagation()}>
       <div className="px-5 py-4 flex items-center justify-between" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
-        <h2 className="text-[17px] font-bold" style={{fontFamily:"Georgia,serif"}}>{isFirst?"Book 1st session":"Book a session"}</h2>
+        <h2 className="text-[17px] font-bold" style={{fontFamily:HEAD}}>{isFirst?"Book 1st session":"Book a session"}</h2>
         <button onClick={onClose}><X size={20} color={C.grey}/></button></div>
       <div className="p-5 max-h-[72vh] overflow-y-auto space-y-3">
         {!fixedPatient&&<div className="flex gap-1 p-1 rounded-xl" style={{background:"#e7e2d6"}}>
@@ -1586,7 +1587,7 @@ function NewPackage({patients,doctors,config,onClose,onSave}){
   return(<div className="absolute inset-0 z-40 flex items-center justify-center p-5" style={{background:"rgba(30,42,58,0.5)"}}>
     <div className="relative w-full max-w-[480px] rounded-3xl overflow-hidden" style={{background:C.bg}}>
       <div className="px-5 py-4 flex items-center justify-between" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
-        <h2 className="text-[18px] font-bold" style={{fontFamily:"Georgia,serif"}}>New treatment package</h2>
+        <h2 className="text-[18px] font-bold" style={{fontFamily:HEAD}}>New treatment package</h2>
         <button onClick={onClose}><X size={20} color={C.grey}/></button></div>
       <div className="p-5 max-h-[70vh] overflow-y-auto space-y-3">
         <Field label="Patient"><select value={f.patientId} onChange={e=>set("patientId")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:f.patientId?C.ink:C.grey}}><option value="">Select patient…</option>{patients.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
@@ -1628,7 +1629,7 @@ function PackageManage({pkg,visits,doctors,config,nameOf,onClose,assignSessionDa
   return(<div className="absolute inset-0 z-40 flex items-center justify-center p-5" style={{background:"rgba(30,42,58,0.5)"}}>
     <div className="relative w-full max-w-[560px] rounded-3xl overflow-hidden" style={{background:C.bg}}>
       <div className="px-5 py-4 flex items-center justify-between" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
-        <div><h2 className="text-[18px] font-bold" style={{fontFamily:"Georgia,serif"}}>{pkg.title}</h2>
+        <div><h2 className="text-[18px] font-bold" style={{fontFamily:HEAD}}>{pkg.title}</h2>
           <div className="text-[12px]" style={{color:C.grey}}>{pkg.patientName} · {pkg.doctorName||"no doctor"}</div></div>
         <button onClick={onClose}><X size={20} color={C.grey}/></button></div>
       <div className="p-5 max-h-[72vh] overflow-y-auto space-y-4">
@@ -1667,11 +1668,11 @@ function PackageManage({pkg,visits,doctors,config,nameOf,onClose,assignSessionDa
 function NoteReview({note,onAction}){
   const[c,setC]=useState(false);
   return(<div className="flex-1 bg-white rounded-2xl p-6 self-start" style={{border:`1px solid ${C.line}`}}>
-    <h2 className="text-[20px] font-bold" style={{fontFamily:"Georgia,serif",color:C.ink}}>{note.patientName}</h2>
+    <h2 className="text-[20px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>{note.patientName}</h2>
     <div className="text-[13px] mb-4" style={{color:C.grey}}>{note.doctorName} · {note.type}</div>
     {note.redFlag&&<div className="rounded-xl p-3.5 mb-4 flex gap-2.5" style={{background:"#FDF3F1",border:`1px solid ${C.red}55`}}>
       <AlertTriangle size={17} color={C.red}/><div className="text-[13px]" style={{color:C.ink2}}><b style={{color:C.red}}>Red flag · </b>{note.redFlagNote||"reported"}</div></div>}
-    <div className="grid grid-cols-3 gap-3 mb-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
       <div className="rounded-xl p-3" style={{background:"#F4F4F2"}}><div className="text-[11px]" style={{color:C.grey}}>Pain</div>
         <div className="flex items-center gap-1.5 mt-1"><span className="text-[20px] font-bold" style={{color:painColor(note.painBefore)}}>{note.painBefore}</span><ChevronRight size={14} color={C.grey}/><span className="text-[20px] font-bold" style={{color:painColor(note.painAfter)}}>{note.painAfter}</span></div></div>
       <div className="rounded-xl p-3" style={{background:"#F4F4F2"}}><div className="text-[11px]" style={{color:C.grey}}>Response</div><div className="mt-2"><span className="text-[11px] font-semibold px-2.5 py-1 rounded-full capitalize" style={{background:respColor[note.response]+"22",color:respColor[note.response]}}>{note.response}</span></div></div>
@@ -1729,11 +1730,11 @@ function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots})
         setTimeout(()=>{setNd({name:"",spec:"",zones:[],slots:[],email:""});setAdding(false);setInviteMsg("");},nd.email?2600:0);
       }} className="px-5 py-2.5 rounded-xl font-semibold text-white disabled:opacity-40" style={{background:C.ink}}>Save doctor</button>
     </div>}
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {doctors.map(d=>(<div key={d.id} className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-full flex items-center justify-center font-bold" style={{background:C.tealSoft,color:C.ink}}>{(d.name.split(" ")[1]||d.name)[0]}</div>
-            <div><div className="font-bold text-[16px]" style={{fontFamily:"Georgia,serif"}}>{d.name}</div><div className="text-[12px]" style={{color:C.grey}}>{d.spec||"—"}</div></div></div>
+            <div><div className="font-bold text-[16px]" style={{fontFamily:HEAD}}>{d.name}</div><div className="text-[12px]" style={{color:C.grey}}>{d.spec||"—"}</div></div></div>
           <button onClick={()=>removeDoctor(d.id)} className="p-1.5 rounded-lg" style={{color:C.red}}><Trash2 size={16}/></button>
         </div>
         <div className="mt-3 text-[12px] space-y-1.5" style={{color:C.ink2}}>
@@ -1780,14 +1781,14 @@ function Billing({finances,updateFinance}){
       <Sel value={f.status} onChange={v=>setF(s=>({...s,status:v}))} options={PAY_STATUS} label="Payment"/>
       <Sel value={f.method} onChange={v=>setF(s=>({...s,method:v}))} options={PAY_METHOD} label="Method"/>
     </FilterBar>
-    <div className="grid grid-cols-3 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[22px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
-    <div className="grid grid-cols-2 gap-4 mb-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[22px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
       <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-        <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:"Georgia,serif"}}>Revenue by doctor</h3>
+        <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:HEAD}}>Revenue by doctor</h3>
         <ResponsiveContainer width="100%" height={160}><BarChart data={byDoc.map(d=>({name:d.doctor.split(" ")[1]||d.doctor,Doctor:d.doc,GoDoc:d.go}))}><XAxis dataKey="name" tick={{fontSize:11,fill:C.grey}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11,fill:C.grey}} axisLine={false} tickLine={false} width={36}/><Tooltip/><Bar dataKey="Doctor" stackId="a" fill="#2E6E73" radius={[0,0,0,0]}/><Bar dataKey="GoDoc" stackId="a" fill={C.green} radius={[6,6,0,0]}/></BarChart></ResponsiveContainer>
       </div>
       <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-        <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:"Georgia,serif"}}>Payment status</h3>
+        <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:HEAD}}>Payment status</h3>
         <div className="flex items-center gap-4"><ResponsiveContainer width="55%" height={160}><PieChart><Pie data={PAY_STATUS.map(s=>({name:s,v:rows.filter(r=>r.status===s).length})).filter(x=>x.v)} dataKey="v" nameKey="name" innerRadius={40} outerRadius={64} paddingAngle={3}>{PAY_STATUS.map(s=><Cell key={s} fill={payColor[s]}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer>
           <div className="space-y-1.5">{PAY_STATUS.map(s=>{const n=rows.filter(r=>r.status===s).length;return n?<div key={s} className="flex items-center gap-2 text-[12px]"><span className="w-3 h-3 rounded-sm" style={{background:payColor[s]}}/>{s}<b className="ml-1">{n}</b></div>:null;})}</div></div>
       </div>
@@ -1862,11 +1863,11 @@ function GrowthAuto({finances,expenses,addExpense,updateExpense,removeExpense,pa
   const cards=[["Total marketing spend",egp(totMkt),C.ink],["New patients",totNew,"#2E6E73"],["Blended CAC",totNew?egp(totMkt/totNew):"—",C.amber],["Total operating expenses",egp(totExp),C.red],["Total net income",egp(totNet),totNet>=0?C.green:C.red]];
 
   return(<div>
-    <div className="grid grid-cols-5 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
 
     {/* expense entry + list */}
     <div className="bg-white rounded-2xl p-5 mb-4" style={{border:`1px solid ${C.line}`}}>
-      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:"Georgia,serif"}}><TrendingDown size={15} color={C.red}/>Operating expenses</h3>
+      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:HEAD}}><TrendingDown size={15} color={C.red}/>Operating expenses</h3>
       <div className="flex flex-wrap items-end gap-2 mb-4">
         <Field label="Month"><input type="month" value={ne.month} onChange={e=>setNe(s=>({...s,month:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         <Field label="Category"><select value={ne.category} onChange={e=>setNe(s=>({...s,category:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`}}>{EXPENSE_CATS.map(c=><option key={c}>{c}</option>)}</select></Field>
@@ -1961,11 +1962,11 @@ function GrowthManual({growthMonths,addGrowthMonth,updateGrowthMonth,removeGrowt
   const cols="100px 80px 1fr 1fr 1fr 90px 1fr 36px";
 
   return(<div>
-    <div className="grid grid-cols-5 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
 
     {/* entry */}
     <div className="bg-white rounded-2xl p-5 mb-4" style={{border:`1px solid ${C.line}`}}>
-      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:"Georgia,serif"}}><Plus size={15} color={C.ink}/>Add a month</h3>
+      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:HEAD}}><Plus size={15} color={C.ink}/>Add a month</h3>
       <div className="flex flex-wrap items-end gap-2">
         <Field label="Month"><input type="month" value={ne.month} onChange={e=>setNe(s=>({...s,month:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         <Field label="New patients"><input type="number" min="0" value={ne.newPatients} onChange={e=>setNe(s=>({...s,newPatients:e.target.value}))} placeholder="0" className={inp} style={{border:`1px solid ${C.line}`,width:"110px"}}/></Field>
@@ -2056,7 +2057,7 @@ function GrowthCalculator(){
   return(<div>
     {/* inputs */}
     <div className="bg-white rounded-2xl p-5 mb-4" style={{border:`1px solid ${C.line}`}}>
-      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:"Georgia,serif"}}><Wallet size={15} color={C.ink}/>CAC &amp; unit economics</h3>
+      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:HEAD}}><Wallet size={15} color={C.ink}/>CAC &amp; unit economics</h3>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         {fld("Marketing / ad spend","marketing","0","EGP")}
         {fld("Other acquisition cost","otherCost","0","EGP")}
@@ -2077,8 +2078,8 @@ function GrowthCalculator(){
 
     {/* growth projection */}
     <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:"Georgia,serif"}}><TrendingDown size={15} color={C.green} style={{transform:"scaleY(-1)"}}/>Growth projection</h3>
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:HEAD}}><TrendingDown size={15} color={C.green} style={{transform:"scaleY(-1)"}}/>Growth projection</h3>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
         {fld("Starting patients / mo","startPatients","0")}
         {fld("Monthly growth","growthPct","0","%")}
         {fld("Months to project","months","6")}
@@ -2199,7 +2200,7 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
       <div className="px-6 py-4 flex items-center justify-between rounded-t-3xl" style={{background:C.ink}}>
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-[18px]" style={{background:C.tealSoft,color:C.ink}}>{patient.name[0]}</div>
-          <div><h2 className="text-white text-[20px] font-bold leading-tight" style={{fontFamily:"Georgia,serif"}}>{patient.name}</h2>
+          <div><h2 className="text-white text-[20px] font-bold leading-tight" style={{fontFamily:HEAD}}>{patient.name}</h2>
             <div className="flex items-center gap-2 mt-0.5"><span className="text-[12px]" style={{color:C.tealSoft}}>{patient.dx?.label||"no dx"} · {patient.zone}</span>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{background:statusColor[patient.status]+"44",color:"#fff"}}>{STATUS_LABEL[patient.status]||patient.status}</span></div></div>
         </div>
@@ -2221,7 +2222,7 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
 
       {confirmDel&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={()=>setConfirmDel(false)}>
         <div className="w-full max-w-[400px] rounded-2xl p-6" style={{background:"#fff"}} onClick={e=>e.stopPropagation()}>
-          <div className="flex items-center gap-2.5 mb-2"><AlertTriangle size={20} color={C.red}/><h3 className="text-[17px] font-bold" style={{color:C.ink,fontFamily:"Georgia,serif"}}>Delete patient?</h3></div>
+          <div className="flex items-center gap-2.5 mb-2"><AlertTriangle size={20} color={C.red}/><h3 className="text-[17px] font-bold" style={{color:C.ink,fontFamily:HEAD}}>Delete patient?</h3></div>
           <p className="text-[13px] mb-4" style={{color:C.ink2}}>This permanently removes <b>{patient.name}</b> and all their sessions, SOAP notes and packages. Finance records (kept by name) stay in the books. This cannot be undone.</p>
           <div className="flex justify-end gap-2">
             <button onClick={()=>setConfirmDel(false)} className="px-4 py-2 rounded-xl text-[13px] font-semibold" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Cancel</button>
@@ -2243,15 +2244,15 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
           <Info label="Assigned doctor" value={patient.doctor}/><Info label="Phone" value={patient.phone}/><Info label="Zone" value={patient.zone}/>
           <Info label="Location" value={patient.locText}/><Info label="Next visit" value={upcoming[0]?(upcoming[0].date||upcoming[0].time):"none scheduled"}/>
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[["Sessions",sessionsTotal,C.ink],["Start pain",startPain??"–",painColor(startPain||0)],["Now",endPain??"–",painColor(endPain||0)],["Improvement",`${improvePct}%`,C.green]].map(([l,v,c])=>(
             <div key={l} className="bg-white rounded-2xl p-3.5" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[22px] font-bold" style={{color:c}}>{v}</div></div>))}
         </div>
         <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-          <h3 className="text-[13px] font-bold mb-2" style={{fontFamily:"Georgia,serif"}}>Pain over sessions</h3>
+          <h3 className="text-[13px] font-bold mb-2" style={{fontFamily:HEAD}}>Pain over sessions</h3>
           {sessions?<PainTrend data={data}/>:<p className="text-[13px]" style={{color:C.grey}}>No sessions logged yet.</p>}
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Response mix</div>
             {respMix.length?<div className="flex items-center gap-3"><ResponsiveContainer width="50%" height={120}><PieChart><Pie data={respMix} dataKey="v" nameKey="name" innerRadius={30} outerRadius={50} paddingAngle={3}>{respMix.map(s=><Cell key={s.name} fill={respColor[s.name]}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer>
               <div className="space-y-1">{respMix.map(s=><div key={s.name} className="flex items-center gap-1.5 text-[12px] capitalize"><span className="w-2.5 h-2.5 rounded-sm" style={{background:respColor[s.name]}}/>{s.name}<b className="ml-0.5">{s.v}</b></div>)}</div></div>:<p className="text-[13px]" style={{color:C.grey}}>—</p>}</div>
@@ -2313,7 +2314,7 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
       {/* ============ DOCUMENTS ============ */}
       {mode==="profile"&&sub==="docs"&&<div className="p-6">
         <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-          <h3 className="text-[14px] font-bold mb-1" style={{fontFamily:"Georgia,serif"}}>Files & documents</h3>
+          <h3 className="text-[14px] font-bold mb-1" style={{fontFamily:HEAD}}>Files & documents</h3>
           <p className="text-[12px] mb-3" style={{color:C.grey}}>Referral letters, imaging, op notes. Tap a file to open it.</p>
           <FileAttach files={docs} onChange={(next)=>{setDocs(next);updatePatientFiles&&updatePatientFiles(patient.id,next);}}/>
         </div>
@@ -2349,7 +2350,7 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
       {mode==="report"&&<div className="p-6">
         <div className="bg-white rounded-2xl p-7" style={{border:`1px solid ${C.line}`}}>
           <div className="flex items-center justify-between pb-4" style={{borderBottom:`2px solid ${C.ink}`}}>
-            <div><div className="text-[20px] font-bold" style={{fontFamily:"Georgia,serif",color:C.ink}}>Discharge Report</div><div className="text-[12px]" style={{color:C.grey}}>Go Doc — Home Physiotherapy</div></div>
+            <div><div className="text-[20px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>Discharge Report</div><div className="text-[12px]" style={{color:C.grey}}>Go Doc — Home Physiotherapy</div></div>
             <div className="text-right text-[12px]" style={{color:C.grey}}>Discharged<br/><b style={{color:C.ink}}>{rep.date}</b></div>
           </div>
           <div className="grid grid-cols-2 gap-y-2 gap-x-6 mt-4 text-[14px]">
@@ -2384,7 +2385,7 @@ function LibraryTab({exerciseLib,modalityLib,setExerciseLib,setModalityLib}){
   const save=()=>{if(!ne.name.trim())return;setExerciseLib(l=>[...l,{...ne,id:Date.now(),name:ne.name.trim()}]);setNe({name:"",dosageHint:"",position:"",description:"",notes:"",mediaUrl:""});setAdding(false);};
   return(<div className="grid grid-cols-2 gap-5">
     <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-      <div className="flex items-center justify-between mb-3"><h3 className="font-bold text-[15px]" style={{fontFamily:"Georgia,serif"}}>Exercises</h3>
+      <div className="flex items-center justify-between mb-3"><h3 className="font-bold text-[15px]" style={{fontFamily:HEAD}}>Exercises</h3>
         <button onClick={()=>setAdding(a=>!a)} className="flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1.5 rounded-lg" style={{background:adding?"#fff":C.ink,color:adding?C.ink:"#fff",border:`1px solid ${C.line}`}}>{adding?<X size={13}/>:<Plus size={13}/>}{adding?"Cancel":"Add"}</button></div>
       {adding&&<div className="mb-3 p-3 rounded-xl space-y-2" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`}}>
         <div className="grid grid-cols-2 gap-2"><input value={ne.name} onChange={e=>setNe(s=>({...s,name:e.target.value}))} placeholder="Exercise name *" className="px-3 py-2 rounded-lg text-[13px] outline-none bg-white" style={{border:`1px solid ${C.line}`}}/>
@@ -2410,7 +2411,7 @@ function LibraryTab({exerciseLib,modalityLib,setExerciseLib,setModalityLib}){
         </div>);})}</div>
     </div>
     <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-      <h3 className="font-bold text-[15px] mb-3" style={{fontFamily:"Georgia,serif"}}>Modalities</h3>
+      <h3 className="font-bold text-[15px] mb-3" style={{fontFamily:HEAD}}>Modalities</h3>
       <div className="space-y-1.5 mb-3 max-h-[460px] overflow-y-auto">{modalityLib.map(m=><div key={m.name} className="text-[13px] px-3 py-2 rounded-lg" style={{background:"#F4F4F2",color:C.ink2}}><b>{m.name}</b>{m.params&&<span style={{color:C.grey}}> · {m.params}</span>}</div>)}</div>
       <div className="flex gap-2"><input value={md} onChange={e=>setMd(e.target.value)} placeholder="Modality" className="flex-1 px-3 py-2 rounded-lg text-[13px] outline-none" style={{border:`1px solid ${C.line}`}}/>
         <input value={mp} onChange={e=>setMp(e.target.value)} placeholder="params" className="w-24 px-3 py-2 rounded-lg text-[13px] outline-none" style={{border:`1px solid ${C.line}`}}/>
@@ -2435,9 +2436,9 @@ function SettingsTab({config,updateConfig}){
   const saveT=()=>updateConfig(tdraft);
   return(<div className="max-w-[640px]">
     <div className="bg-white rounded-2xl p-6" style={{border:`1px solid ${C.line}`}}>
-      <h3 className="font-bold text-[16px] mb-1" style={{fontFamily:"Georgia,serif"}}>Defaults</h3>
+      <h3 className="font-bold text-[16px] mb-1" style={{fontFamily:HEAD}}>Defaults</h3>
       <p className="text-[12px] mb-5" style={{color:C.grey}}>These values are applied when a new session is logged. Each row in Finances is editable individually — only future sessions pick up changes here.</p>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Default session fee">
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white" style={{border:`1px solid ${C.line}`}}>
             <input type="number" value={draft.defaultFee} onChange={e=>setDraft(d=>({...d,defaultFee:+e.target.value||0}))} className="flex-1 outline-none text-[15px]"/>
@@ -2465,7 +2466,7 @@ function SettingsTab({config,updateConfig}){
       </div>
     </div>
     <div className="bg-white rounded-2xl p-6 mt-4" style={{border:`1px solid ${C.line}`}}>
-      <h3 className="font-bold text-[16px] mb-1" style={{fontFamily:"Georgia,serif"}}>Treatment packages</h3>
+      <h3 className="font-bold text-[16px] mb-1" style={{fontFamily:HEAD}}>Treatment packages</h3>
       <p className="text-[12px] mb-4" style={{color:C.grey}}>Clinic-wide rules that apply to every package, not per session.</p>
       <div className="flex items-start justify-between gap-4 py-3" style={{borderTop:`1px solid ${C.line}`}}>
         <div><div className="text-[14px] font-semibold" style={{color:C.ink}}>No-show consumes a session</div>
@@ -2483,7 +2484,7 @@ function SettingsTab({config,updateConfig}){
       </div>
     </div>
     <div className="bg-white rounded-2xl p-6 mt-4" style={{border:`1px solid ${C.line}`}}>
-      <h3 className="font-bold text-[16px] mb-1" style={{fontFamily:"Georgia,serif"}}>Reminder templates</h3>
+      <h3 className="font-bold text-[16px] mb-1" style={{fontFamily:HEAD}}>Reminder templates</h3>
       <p className="text-[12px] mb-4" style={{color:C.grey}}>Message sent for each reminder. Use placeholders <code>{"{patient}"}</code>, <code>{"{doctor}"}</code>, <code>{"{date}"}</code>, <code>{"{time}"}</code> — they're filled in per recipient when the reminder fires.</p>
       <div className="space-y-3">{TPL.map(t=>(
         <Field key={t.k} label={`${t.label} — ${t.hint}`}>
@@ -2499,7 +2500,7 @@ function SettingsTab({config,updateConfig}){
       </div>
     </div>
     <div className="bg-white rounded-2xl p-6 mt-4" style={{border:`1px solid ${C.line}`}}>
-      <h3 className="font-bold text-[15px] mb-1" style={{fontFamily:"Georgia,serif"}}>Admin team</h3>
+      <h3 className="font-bold text-[15px] mb-1" style={{fontFamily:HEAD}}>Admin team</h3>
       <p className="text-[12px] mb-3" style={{color:C.grey}}>Accounts with full system access. Auth + RLS handled in the Supabase wiring layer — this is the source of truth for who's listed.</p>
       <div className="space-y-2">{[
         {name:"Omar Youssef",email:"oyoussef@godoc.site",role:"Founder · Medical Director"},
@@ -2528,7 +2529,7 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
   return(<div className="absolute inset-0 z-40 flex items-center justify-center p-5" style={{background:"rgba(30,42,58,0.5)"}}>
     <div className="relative w-full max-w-[480px] rounded-3xl overflow-hidden" style={{background:C.bg}}>
       <div className="px-5 py-4 flex items-center justify-between" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
-        <div className="flex items-center gap-2">{step>1&&step<4&&<button onClick={()=>setStep(s=>s-1)}><ChevronLeft size={20}/></button>}<h2 className="text-[18px] font-bold" style={{fontFamily:"Georgia,serif"}}>New patient</h2></div>
+        <div className="flex items-center gap-2">{step>1&&step<4&&<button onClick={()=>setStep(s=>s-1)}><ChevronLeft size={20}/></button>}<h2 className="text-[18px] font-bold" style={{fontFamily:HEAD}}>New patient</h2></div>
         <button onClick={onClose}><X size={20} color={C.grey}/></button></div>
       {step<4&&<div className="flex gap-1.5 px-5 py-3" style={{background:"#fff"}}>{[1,2,3].map(s=><div key={s} className="flex-1 h-1.5 rounded-full" style={{background:step>=s?C.teal:C.line}}/>)}</div>}
       <div className="p-5 max-h-[66vh] overflow-y-auto">
@@ -2600,7 +2601,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
       <div className="px-5 pt-8 pb-5" style={{background:C.ink}}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5"><div className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:C.teal}}><Stethoscope size={18} color={C.ink}/></div>
-            <div><h1 className="text-white text-[18px] font-bold" style={{fontFamily:"Georgia,serif"}}>{me}</h1><p className="text-[12px]" style={{color:C.tealSoft}}>{mine.length} upcoming · {mySlots.length} slots/wk</p></div></div>
+            <div><h1 className="text-white text-[18px] font-bold" style={{fontFamily:HEAD}}>{me}</h1><p className="text-[12px]" style={{color:C.tealSoft}}>{mine.length} upcoming · {mySlots.length} slots/wk</p></div></div>
           <NotifBell items={(notifs||[]).filter(n=>n.target==="doctor"&&(!n.to||n.to===me))} onOpen={()=>markRead&&markRead("doctor",me)} dark/>
         </div>
         <div className="flex gap-1.5 mt-4">
@@ -2613,7 +2614,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
         {mine.map(v=>{const p=pOf(v.patientId);return(<div key={v.id} className="bg-white rounded-2xl p-4 mb-3" style={{border:`1px solid ${C.line}`}}>
           <button onClick={()=>setActive({visit:v,patient:p})} className="w-full text-left">
           <div className="flex items-center gap-2"><Clock size={14} color={C.teal}/><span className="font-bold">{v.date||v.time}</span><span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:v.type==="Assessment"?C.teal+"33":"#F0F0EE",color:C.ink2}}>{v.type}</span></div>
-          <div className="text-[17px] font-bold mt-1.5" style={{fontFamily:"Georgia,serif",color:C.ink}}>{p?.name}</div>
+          <div className="text-[17px] font-bold mt-1.5" style={{fontFamily:HEAD,color:C.ink}}>{p?.name}</div>
           <div className="text-[13px] flex items-center gap-1.5 mt-0.5" style={{color:C.grey}}><MapPin size={13}/>{p?.zone} · {p?.dx?.label||"no dx yet"}</div></button>
           {reschedFooter(v)}</div>);})}
 
@@ -2628,7 +2629,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
                   {fillable?<span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:C.teal+"22",color:"#2E6E73"}}>Fill session notes</span>
                     :<span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1" style={{background:C.line,color:C.grey}}><Lock size={11}/>locked</span>}
                 </div>
-                <div className="text-[16px] font-bold mt-1.5" style={{fontFamily:"Georgia,serif",color:C.ink}}>{p?.name} — Session {ord} of {total}</div>
+                <div className="text-[16px] font-bold mt-1.5" style={{fontFamily:HEAD,color:C.ink}}>{p?.name} — Session {ord} of {total}</div>
                 <div className="text-[12.5px] mt-0.5" style={{color:C.grey}}>{pk.title}{!fillable&&blockerOrd?` · complete Session ${blockerOrd} notes first`:""}</div>
               </button>
               {reschedFooter(v)}</div>);})}
@@ -2654,7 +2655,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
         {myPatients.map(p=>{const h=notes.filter(n=>n.patientId===p.id);const last=h.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")).slice(-1)[0];return(
           <button key={p.id} onClick={()=>setViewP(p)} className="w-full bg-white rounded-2xl p-4 mb-3 text-left" style={{border:`1px solid ${C.line}`}}>
             <div className="flex items-center justify-between">
-              <div className="text-[16px] font-bold" style={{fontFamily:"Georgia,serif",color:C.ink}}>{p.name}</div>
+              <div className="text-[16px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>{p.name}</div>
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{background:statusColor[p.status]+"22",color:statusColor[p.status]}}>{STATUS_LABEL[p.status]||p.status}</span></div>
             <div className="text-[12px] flex items-center gap-1.5 mt-0.5" style={{color:C.grey}}><MapPin size={12}/>{p.zone} · {p.dx?.label||"no dx yet"}</div>
             <div className="flex items-center gap-3 mt-2 text-[12px]" style={{color:C.ink2}}>
@@ -2667,7 +2668,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
         {!meDoc&&<p className="text-[13px]" style={{color:C.grey}}>Your doctor profile isn’t set up yet — ask the admin to add you.</p>}
         {meDoc&&<>
           <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
-            <div className="flex items-center gap-2 mb-1"><Calendar size={15} color={C.teal}/><h3 className="text-[14px] font-bold" style={{fontFamily:"Georgia,serif"}}>Weekly availability</h3></div>
+            <div className="flex items-center gap-2 mb-1"><Calendar size={15} color={C.teal}/><h3 className="text-[14px] font-bold" style={{fontFamily:HEAD}}>Weekly availability</h3></div>
             <p className="text-[12px] mb-3" style={{color:C.grey}}>Tap the times you’re available to visit patients. Changes save instantly and the admin sees them live.</p>
             <SlotGrid slots={mySlots} onToggle={toggleSlot}/>
             <div className="flex items-center justify-between mt-3 pt-3 text-[12px]" style={{borderTop:`1px solid ${C.line}`,color:C.grey}}>
@@ -2690,7 +2691,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
 
       {picker&&<div className="absolute inset-0 z-40 flex items-end" style={{background:"rgba(30,42,58,0.5)"}} onClick={()=>setPicker(false)}>
         <div className="w-full rounded-t-3xl p-5" style={{background:C.bg}} onClick={e=>e.stopPropagation()}>
-          <div className="flex items-center justify-between mb-3"><h3 className="text-[16px] font-bold" style={{fontFamily:"Georgia,serif"}}>Log a session for…</h3><button onClick={()=>setPicker(false)}><X size={20} color={C.grey}/></button></div>
+          <div className="flex items-center justify-between mb-3"><h3 className="text-[16px] font-bold" style={{fontFamily:HEAD}}>Log a session for…</h3><button onClick={()=>setPicker(false)}><X size={20} color={C.grey}/></button></div>
           <div className="space-y-2 max-h-[50vh] overflow-y-auto">
             {myPatients.map(p=>(<button key={p.id} onClick={()=>startSession(p)} className="w-full text-left bg-white rounded-xl p-3.5 flex items-center justify-between" style={{border:`1px solid ${C.line}`}}>
               <div><div className="font-semibold">{p.name}</div><div className="text-[12px]" style={{color:C.grey}}>{p.zone} · {p.dx?.label||"no dx"}</div></div><ChevronRight size={16} color={C.grey}/></button>))}
@@ -2715,7 +2716,7 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
   return(<div className="pb-32">
     <div className="px-4 pt-8 pb-3" style={{background:C.ink}}>
       <button onClick={onBack} style={{color:"#fff"}}><ChevronLeft size={22}/></button>
-      <h1 className="text-white text-[20px] font-bold mt-1" style={{fontFamily:"Georgia,serif"}}>{patient.name}</h1>
+      <h1 className="text-white text-[20px] font-bold mt-1" style={{fontFamily:HEAD}}>{patient.name}</h1>
       <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:C.teal,color:C.ink}}>{visit.type}</span></div>
     <div className="px-4 pt-4 space-y-3">
       {!isAssess&&lastAssess&&<div className="rounded-xl px-3.5 py-2.5 flex gap-2" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`}}><Activity size={15} color="#2E6E73" className="flex-shrink-0 mt-0.5"/><p className="text-[12px]" style={{color:C.ink2}}>Carried from assessment: <b>{lastAssess.dx?.label||"dx"}</b>. No need to re-enter.</p></div>}
