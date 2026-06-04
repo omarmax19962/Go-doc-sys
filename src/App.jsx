@@ -11,6 +11,7 @@ import { supabase } from "./lib/supabase";
 import { useAuth } from "./lib/useAuth";
 import { useDataStore } from "./lib/useDataStore";
 import { openWhatsApp } from "./lib/wa";
+import { planForDx } from "./lib/rehab";
 import Login from "./components/Login";
 
 /* ============================================================================
@@ -3123,6 +3124,10 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
   const[subjective,setSubjective]=useState(""),[objective,setObjective]=useState(""),[measures,setMeasures]=useState("");
   const[assessment,setAssessment]=useState(""),[goals,setGoals]=useState(lastAssess?.goals||""),[hep,setHep]=useState(lastAssess?.hep||""),[education,setEducation]=useState("");
   const[additionalNotes,setAdditionalNotes]=useState("");
+  // Diagnosis-driven exercise protocol — surfaces condition-appropriate
+  // exercises (evidence-based MSK guidelines) once a diagnosis is set.
+  const dxPlan=useMemo(()=>planForDx(dx),[dx]);
+  const addAllSuggested=()=>{if(!dxPlan)return;setEx(d=>{const n={...d};dxPlan.items.forEach(it=>{n[`${it.name} · ${it.dose}`]=true;});return n;});};
   const can=isAssess?!!dx:(pb!=null&&resp);
   return(<div className="pb-32">
     <div className="px-4 pt-8 pb-3" style={{background:C.ink}}>
@@ -3145,6 +3150,18 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
       <SoapSection letter="O" label="Objective" hint="What you observe & measure"/>
       <NoteArea label="Objective findings" hint="observation · palpation · gait · posture · swelling" value={objective} set={setObjective} rows={3} placeholder="Muscle tightness, tenderness on palpation, gait / posture abnormalities, visible deformity or swelling…"/>
       <NoteArea label="Tests & measures" hint="ROM · MMT/strength · special tests · outcome scores" value={measures} set={setMeasures} rows={3} placeholder="e.g. Knee flexion ROM 0–110°, quadriceps MMT 4/5, SLR negative, LEFS 48/80…"/>
+      {/* Diagnosis-driven evidence-based exercise suggestions */}
+      {dxPlan&&<div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.tealSoft}`}}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Suggested for diagnosis</div>
+          <button onClick={addAllSuggested} className="text-[11px] font-bold flex items-center gap-1" style={{color:"#2E6E73"}}><Plus size={13}/>Add all</button></div>
+        <div className="text-[11px] mb-2.5 flex items-start gap-1.5" style={{color:C.grey}}><BookOpen size={12} className="flex-shrink-0 mt-0.5"/><span><b style={{color:C.ink2}}>{dxPlan.label}</b> · {dxPlan.src}</span></div>
+        <div className="space-y-2">{dxPlan.items.map(it=>{const label=`${it.name} · ${it.dose}`;const on=!!ex[label];return(
+          <button key={label} onClick={()=>setEx(d=>({...d,[label]:!d[label]}))} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left" style={{border:`1px solid ${on?C.teal:C.line}`,background:on?"#F4FBFC":"#fff"}}>
+            <span className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{background:on?C.teal:"#fff",border:`1px solid ${on?C.teal:C.line}`}}>{on&&<Check size={13} color={C.ink} strokeWidth={3}/>}</span>
+            <span className="text-[13px] flex-1">{it.name}</span>
+            <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap" style={{background:on?"#fff":"#F4F4F2",color:"#2E6E73"}}>{it.dose}</span></button>);})}</div>
+        <p className="text-[10px] mt-2.5" style={{color:C.grey}}>Guideline starting points — adjust dosage to the patient.</p></div>}
       <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
         <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Exercises done</div>
         <div className="space-y-2">{[...exerciseLib.map(e=>({name:e.name,hint:e.dosageHint||"",lib:true})),...customEx.map(c=>({name:c,hint:"",lib:false}))].map(e=>{const label=e.hint?`${e.name} · ${e.hint}`:e.name;const on=!!ex[label];return(<button key={label} onClick={()=>setEx(d=>({...d,[label]:!d[label]}))} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left" style={{border:`1px solid ${on?C.teal:C.line}`,background:on?"#F4FBFC":"#fff"}}>
