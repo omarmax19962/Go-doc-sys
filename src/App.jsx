@@ -678,8 +678,12 @@ const ZONES = [
   "Other / outside Greater Cairo",
 ];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-// All 24 hours of the day. Stored as 24h "HH:MM" keys; rendered in 12h AM/PM.
-const SLOT_TIMES = Array.from({length:24},(_,h)=>(h<10?"0":"")+h+":00");
+// All 24 hours of the day, ordered so the clinic's operating window (9 AM →
+// midnight, a 15-hour stretch) comes first; the off-hours (12 AM–8 AM) follow.
+// Stored as 24h "HH:MM" keys; rendered in 12h AM/PM.
+const OPEN_FROM = 9; // 9 AM — start of the operating window
+const SLOT_TIMES = Array.from({length:24},(_,i)=>{const h=(OPEN_FROM+i)%24;return (h<10?"0":"")+h+":00";});
+const isOpenHour = h => h >= OPEN_FROM; // 9 AM..11 PM are inside the window
 const PAY_STATUS = ["Paid","Pending","Partial","Waived","Refunded"];
 const PAY_METHOD = ["Cash","Instapay","Vodafone Cash","Bank Transfer","Other"];
 const payColor = {Paid:C.green,Pending:C.amber,Partial:"#D9714E",Waived:C.grey,Refunded:"#8E5BB5"};
@@ -1853,11 +1857,26 @@ const LogTimingBadge=({note})=>{
 
 /* ---------- weekly availability grid (days × time slots) ---------- */
 function SlotGrid({slots,onToggle}){
-  return(<div className="overflow-x-auto -mx-1 px-1">{DAYS.map(day=>(<div key={day} className="flex items-center gap-1 mb-1">
-    <span className="w-9 text-[11px] font-semibold flex-shrink-0" style={{color:C.ink2}}>{day}</span>
-    {SLOT_TIMES.map(t=>{const k=`${day}-${t}`;const on=slots.includes(k);return(
-      <button key={t} onClick={()=>onToggle(k)} className="flex-shrink-0 w-[52px] h-8 rounded-md text-[10px] font-semibold whitespace-nowrap" style={{background:on?C.teal:"#F4F4F2",color:on?C.ink:C.grey,border:`1px solid ${on?C.teal:C.line}`}}>{hourLabel12(Number(t.slice(0,2)))}</button>);})}
-  </div>))}</div>);
+  const cols={gridTemplateColumns:"54px repeat(7,minmax(0,1fr))"};
+  return(<div className="w-full">
+    {/* Day headers across the top */}
+    <div className="grid gap-1 mb-1.5" style={cols}>
+      <span/>
+      {DAYS.map(day=><span key={day} className="text-[11px] font-bold text-center" style={{color:C.ink2}}>{day}</span>)}
+    </div>
+    {/* One row per hour, times stacked vertically; operating hours first */}
+    {SLOT_TIMES.map((t,i)=>{const h=Number(t.slice(0,2));const open=isOpenHour(h);
+      // divider where the operating window ends and off-hours begin
+      const firstOff=!open&&isOpenHour(Number(SLOT_TIMES[i-1]?.slice(0,2)));
+      return(<div key={t}>
+        {firstOff&&<div className="flex items-center gap-2 my-1.5"><div className="flex-1 h-px" style={{background:C.line}}/><span className="text-[9px] font-bold uppercase tracking-wider" style={{color:C.grey}}>After hours</span><div className="flex-1 h-px" style={{background:C.line}}/></div>}
+        <div className="grid gap-1 mb-1 items-center" style={cols}>
+          <span className="text-[10px] font-semibold text-right pr-1 whitespace-nowrap" style={{color:open?C.ink2:C.grey}}>{hourLabel12(h)}</span>
+          {DAYS.map(day=>{const k=`${day}-${t}`;const on=slots.includes(k);return(
+            <button key={day} onClick={()=>onToggle(k)} aria-label={`${day} ${hourLabel12(h)}`} className="h-8 rounded-md" style={{background:on?C.teal:(open?"#F4F4F2":"#FAFAFA"),border:`1px solid ${on?C.teal:C.line}`,opacity:open?1:0.7}}/>);})}
+        </div>
+      </div>);})}
+  </div>);
 }
 
 /* ---------- Doctors management (with availability calendar) ---------- */
