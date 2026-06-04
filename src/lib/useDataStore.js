@@ -460,9 +460,21 @@ export function useDataStore({ role, me }) {
     else notify('doctor', `Admin updated your coverage zones (${zones.length})`, d?.name)
   }, [doctors, notify])
 
+  // patch is camelCase from the UI; map the multi-word keys to snake_case columns.
+  const _FIN_COL = { paidOut: 'paid_out', paidOutDate: 'paid_out_date', visitId: 'visit_id' }
   const updateFinance = useCallback(async (id, patch) => {
     setFinances((fs) => fs.map((f) => f.id === id ? { ...f, ...patch } : f))
-    await supabase.from('finances').update(patch).eq('id', id)
+    const dbPatch = {}
+    Object.entries(patch).forEach(([k, v]) => { dbPatch[_FIN_COL[k] || k] = v })
+    await supabase.from('finances').update(dbPatch).eq('id', id)
+  }, [])
+
+  // Mark a batch of session lines as paid-out (doctor settlement) — or un-settle.
+  const settleFinances = useCallback(async (ids, settled) => {
+    if (!ids || !ids.length) return
+    const date = settled ? new Date().toISOString().slice(0, 10) : null
+    setFinances((fs) => fs.map((f) => ids.includes(f.id) ? { ...f, paidOut: settled, paidOutDate: date } : f))
+    await supabase.from('finances').update({ paid_out: settled, paid_out_date: date }).in('id', ids)
   }, [])
 
   // ---- EXPENSES (operational spend + marketing CAC) ----
@@ -724,7 +736,7 @@ export function useDataStore({ role, me }) {
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
-    updateFinance, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
+    updateFinance, settleFinances, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,
     bookSession, rescheduleVisit,

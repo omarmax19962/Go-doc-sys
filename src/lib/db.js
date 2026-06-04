@@ -215,8 +215,11 @@ export const fromFinance = (r) => ({
   type: r.type,
   fee: Number(r.fee),
   pct: Number(r.pct),
+  discount: Number(r.discount || 0),
   status: r.status,
   method: r.method,
+  paidOut: !!r.paid_out,
+  paidOutDate: r.paid_out_date || null,
   visitId: r.visit_id || null,
 })
 export const toFinance = (f) => ({
@@ -226,8 +229,11 @@ export const toFinance = (f) => ({
   type: f.type,
   fee: f.fee,
   pct: f.pct,
+  discount: f.discount == null || f.discount === '' ? 0 : Number(f.discount),
   status: f.status,
   method: f.method,
+  paid_out: !!f.paidOut,
+  paid_out_date: f.paidOutDate || null,
   visit_id: f.visitId || null,
 })
 

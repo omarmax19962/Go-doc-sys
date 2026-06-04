@@ -4,7 +4,7 @@ import {
   ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Pencil, Paperclip, Link2,
   CircleCheck, AlertTriangle, MessageSquare, CornerUpLeft, Trash2, Activity, Wallet,
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
-  Layers, Lock, CalendarDays
+  Layers, Lock, CalendarDays, Download, Receipt, Banknote
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
@@ -678,10 +678,88 @@ const ZONES = [
 ];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const SLOT_TIMES = ["09:00","11:00","13:00","15:00","17:00","19:00"];
-const PAY_STATUS = ["Paid","Pending","Partial","Waived"];
+const PAY_STATUS = ["Paid","Pending","Partial","Waived","Refunded"];
 const PAY_METHOD = ["Cash","Instapay","Vodafone Cash","Bank Transfer","Other"];
-const payColor = {Paid:C.green,Pending:C.amber,Partial:"#D9714E",Waived:C.grey};
+const payColor = {Paid:C.green,Pending:C.amber,Partial:"#D9714E",Waived:C.grey,Refunded:"#8E5BB5"};
 const egp = n => `${Math.round(n||0).toLocaleString()} EGP`;
+// net = fee minus any discount; refunded/waived lines count as 0 collected.
+const netFee = r => Math.max(0, (Number(r.fee)||0) - (Number(r.discount)||0));
+// CSV export helper — downloads rows (array of arrays) as a .csv file.
+const downloadCSV = (filename, rows) => {
+  const esc = v => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
+  const csv = rows.map(r => r.map(esc).join(",")).join("\n");
+  const blob = new Blob(["﻿"+csv], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+};
+
+// Invoice / receipt — opens a clean print window the admin can save as PDF.
+const printInvoice = (patient, rows, currency="EGP") => {
+  const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  const money = n => `${Math.round(n||0).toLocaleString()} ${currency}`;
+  const live = rows.filter(r => r.status!=="Refunded" && r.status!=="Waived");
+  const subtotal = rows.reduce((a,r)=>a+(+r.fee||0),0);
+  const discount = rows.reduce((a,r)=>a+(+r.discount||0),0);
+  const netTotal = live.reduce((a,r)=>a+netFee(r),0);
+  const paid = rows.filter(r=>r.status==="Paid").reduce((a,r)=>a+netFee(r),0);
+  const outstanding = rows.filter(r=>r.status==="Pending"||r.status==="Partial").reduce((a,r)=>a+netFee(r),0);
+  const today = new Date().toISOString().slice(0,10);
+  const invNo = `INV-${patient.id||"0"}-${today.replace(/-/g,"")}`;
+  const lineRows = rows.length ? rows.map(r=>`<tr>
+      <td>${esc(r.date||"—")}</td><td>${esc(r.type||"Session")}</td>
+      <td class="r">${money(r.fee)}</td><td class="r">${(+r.discount||0)>0?"−"+money(r.discount):"—"}</td>
+      <td class="r">${money(netFee(r))}</td><td><span class="pill" style="background:#eef;">${esc(r.status||"")}</span></td>
+    </tr>`).join("") : `<tr><td colspan="6" style="text-align:center;color:#888;padding:18px;">No billed sessions yet.</td></tr>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(invNo)}</title>
+  <style>
+    *{box-sizing:border-box;} body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1E2A3A;margin:0;padding:32px;}
+    .wrap{max-width:760px;margin:0 auto;}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #7DD8DF;padding-bottom:16px;margin-bottom:20px;}
+    .brand{font-size:26px;font-weight:800;letter-spacing:-.5px;} .brand span{color:#3FA796;}
+    .muted{color:#8794A1;font-size:12px;} h1{font-size:15px;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;}
+    .meta{text-align:right;font-size:12px;color:#5b6675;line-height:1.6;}
+    .grid2{display:flex;gap:24px;margin-bottom:18px;flex-wrap:wrap;}
+    .box{flex:1;min-width:220px;background:#F3F6F7;border-radius:12px;padding:14px 16px;}
+    .box b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#8794A1;margin-bottom:6px;}
+    table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px;}
+    th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#8794A1;border-bottom:2px solid #E6EBEE;padding:8px 6px;}
+    td{padding:9px 6px;border-bottom:1px solid #E6EBEE;} td.r,th.r{text-align:right;}
+    .pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;}
+    .totals{margin-left:auto;width:280px;font-size:13px;}
+    .totals div{display:flex;justify-content:space-between;padding:5px 0;}
+    .totals .big{border-top:2px solid #1E2A3A;margin-top:6px;padding-top:8px;font-size:16px;font-weight:800;}
+    .due{color:#E0A458;} .pd{color:#3FA796;}
+    .foot{margin-top:36px;border-top:1px solid #E6EBEE;padding-top:14px;font-size:11px;color:#8794A1;text-align:center;}
+    @media print{body{padding:0;} .noprint{display:none;}}
+    .btn{background:#1E2A3A;color:#fff;border:none;padding:10px 18px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;}
+  </style></head><body><div class="wrap">
+    <div class="noprint" style="text-align:right;margin-bottom:16px;"><button class="btn" onclick="window.print()">Print / Save as PDF</button></div>
+    <div class="head">
+      <div><div class="brand">Go<span>Doc</span></div><div class="muted">Physiotherapy &amp; home care</div></div>
+      <div class="meta"><h1>Invoice</h1><div><b>${esc(invNo)}</b></div><div>Issued: ${esc(today)}</div></div>
+    </div>
+    <div class="grid2">
+      <div class="box"><b>Billed to</b>${esc(patient.name||"—")}${patient.phone?`<br>${esc(patient.phone)}`:""}${patient.zone?`<br>${esc(patient.zone)}`:""}</div>
+      <div class="box"><b>Diagnosis</b>${patient.dx?esc((patient.dx.code?patient.dx.code+" · ":"")+patient.dx.label):"—"}${patient.doctor&&patient.doctor!=="—"?`<br><span class="muted">Doctor: ${esc(patient.doctor)}</span>`:""}</div>
+    </div>
+    <table><thead><tr><th>Date</th><th>Session</th><th class="r">Fee</th><th class="r">Discount</th><th class="r">Net</th><th>Status</th></tr></thead>
+      <tbody>${lineRows}</tbody></table>
+    <div class="totals">
+      <div><span>Subtotal</span><span>${money(subtotal)}</span></div>
+      ${discount>0?`<div><span>Discounts</span><span>−${money(discount)}</span></div>`:""}
+      <div><span>Net total</span><span>${money(netTotal)}</span></div>
+      <div class="pd"><span>Paid</span><span>${money(paid)}</span></div>
+      <div class="big due"><span>Outstanding</span><span>${money(outstanding)}</span></div>
+    </div>
+    <div class="foot">Thank you for choosing Go Doc. This invoice was generated on ${esc(today)}.</div>
+  </div>
+  <script>window.onload=function(){setTimeout(function(){window.print();},350);};</script>
+  </body></html>`;
+  const w = window.open("", "_blank", "width=820,height=900");
+  if(!w){ alert("Please allow pop-ups to generate the invoice."); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+};
 const EXPENSE_CATS = ["Marketing","Rent","Salaries","Equipment","Utilities","Software","Other"];
 const ym = s => (s||"").slice(0,7);
 const monthLabel = m => { if(!m)return"—"; const [y,mo]=m.split("-"); return `${MONTHS[(+mo||1)-1].slice(0,3)} ${y}`; };
@@ -918,7 +996,7 @@ function AppWithData({ role, me, onSignOut }){
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
-    updateFinance, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
+    updateFinance, settleFinances, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule, bookSession, rescheduleVisit,
     setExerciseLib, setModalityLib, markRead,
@@ -932,7 +1010,7 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,requestReschedule,bookSession,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1083,7 +1161,7 @@ function _LegacyMockApp(){
 }
 
 /* =============================== ADMIN =============================== */
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
@@ -1264,7 +1342,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
       {tab==="doctors"&&<DoctorsTab doctors={doctors} patients={patients} addDoctor={addDoctor} removeDoctor={removeDoctor} updateDoctorSlots={updateDoctorSlots}/>}
 
       {/* FINANCES — mirrors the Sessions Tracker (admin-only) */}
-      {tab==="finances"&&<Finances finances={finances} updateFinance={updateFinance} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth} patients={patients} config={config}/>}
+      {tab==="finances"&&<Finances finances={finances} updateFinance={updateFinance} settleFinances={settleFinances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth} patients={patients} doctors={doctors} config={config}/>}
 
       {/* LIBRARY — admin adds exercises + modalities */}
       {tab==="library"&&<LibraryTab exerciseLib={exerciseLib} modalityLib={modalityLib} setExerciseLib={setExerciseLib} setModalityLib={setModalityLib}/>}
@@ -1752,27 +1830,30 @@ function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots})
 }
 
 /* ---------- Finances (mirrors the Sessions Tracker · admin-only) ---------- */
-function Finances({finances,updateFinance,expenses=[],addExpense,updateExpense,removeExpense,growthMonths=[],addGrowthMonth,updateGrowthMonth,removeGrowthMonth,patients=[],config}){
+function Finances({finances,updateFinance,settleFinances,expenses=[],addExpense,updateExpense,removeExpense,growthMonths=[],addGrowthMonth,updateGrowthMonth,removeGrowthMonth,patients=[],doctors=[],config}){
   const[view,setView]=useState("billing");
+  const cur=config?.currency||"EGP";
   return(<div>
     <div className="flex gap-1 p-1 mb-4 rounded-xl w-fit" style={{background:"#fff",border:`1px solid ${C.line}`}}>
-      {[["billing","Billing"],["growth","Growth & CAC"]].map(([k,l])=>(<button key={k} onClick={()=>setView(k)} className="px-4 py-1.5 rounded-lg text-[13px] font-semibold" style={{background:view===k?C.ink:"transparent",color:view===k?"#fff":C.ink2}}>{l}</button>))}
+      {[["billing","Billing"],["payouts","Doctor payouts"],["growth","Growth & CAC"]].map(([k,l])=>(<button key={k} onClick={()=>setView(k)} className="px-4 py-1.5 rounded-lg text-[13px] font-semibold" style={{background:view===k?C.ink:"transparent",color:view===k?"#fff":C.ink2}}>{l}</button>))}
     </div>
-    {view==="billing"?<Billing finances={finances} updateFinance={updateFinance}/>
-      :<GrowthCAC finances={finances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth} patients={patients}/>}
+    {view==="billing"&&<Billing finances={finances} updateFinance={updateFinance} currency={cur}/>}
+    {view==="payouts"&&<Payouts finances={finances} settleFinances={settleFinances} doctors={doctors}/>}
+    {view==="growth"&&<GrowthCAC finances={finances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth} patients={patients}/>}
   </div>);
 }
 
-function Billing({finances,updateFinance}){
+function Billing({finances,updateFinance,currency="EGP"}){
   const[f,setF]=useState({from:"",to:"",doctor:"",status:"",method:""});
   const docOpts=[...new Set(finances.map(x=>x.doctor))];
   const src=finances.filter(x=>(!(f.from||f.to)||inRange(x.date,f.from,f.to))&&(!f.doctor||x.doctor===f.doctor)&&(!f.status||x.status===f.status)&&(!f.method||x.method===f.method));
-  const rows=src.map(x=>({...x,docEarn:x.fee*x.pct,godoc:x.fee*(1-x.pct)}));
-  const sum=k=>rows.reduce((a,r)=>a+r[k],0);
-  const paid=rows.filter(r=>r.status==="Paid").length,pend=rows.filter(r=>r.status==="Pending").length;
-  const byDoc=Object.values(rows.reduce((m,r)=>{(m[r.doctor]||=({doctor:r.doctor,sessions:0,rev:0,doc:0,go:0}));const o=m[r.doctor];o.sessions++;o.rev+=r.fee;o.doc+=r.docEarn;o.go+=r.godoc;return m;},{}));
-  const cards=[["Sessions",rows.length,C.ink],["Revenue",egp(sum("fee")),C.ink],["Doctor earnings",egp(sum("docEarn")),"#2E6E73"],["Go Doc earnings",egp(sum("godoc")),C.green],["Paid",paid,C.green],["Pending",pend,C.amber]];
-  const gt="90px 1.3fr 1.2fr 84px 78px 56px 92px 92px 108px 130px";
+  // net = fee - discount; refunded/waived recognise no revenue or doctor earnings.
+  const rows=src.map(x=>{const net=netFee(x);const eff=(x.status==="Refunded"||x.status==="Waived")?0:net;return{...x,net,eff,docEarn:eff*x.pct,godoc:eff*(1-x.pct)};});
+  const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
+  const byDoc=Object.values(rows.reduce((m,r)=>{(m[r.doctor]||=({doctor:r.doctor,sessions:0,rev:0,doc:0,go:0}));const o=m[r.doctor];o.sessions++;o.rev+=r.eff;o.doc+=r.docEarn;o.go+=r.godoc;return m;},{}));
+  const cards=[["Sessions",rows.length,C.ink],["Gross billed",egp(sum("fee")),C.ink],["Discounts",egp(sum("discount")),"#8E5BB5"],["Net revenue",egp(sum("eff")),C.ink],["Doctor earnings",egp(sum("docEarn")),"#2E6E73"],["Go Doc earnings",egp(sum("godoc")),C.green]];
+  const exportCSV=()=>{const head=["Date","Doctor","Patient","Type","Fee","Discount","Net","Dr %","Dr earn","Go Doc","Status","Method"];const body=rows.map(r=>[r.date,r.doctor,r.patient,r.type,Math.round(r.fee),Math.round(r.discount||0),Math.round(r.net),Math.round(r.pct*100)+"%",Math.round(r.docEarn),Math.round(r.godoc),r.status,r.method]);const totals=["TOTAL","","","",Math.round(sum("fee")),Math.round(sum("discount")),Math.round(sum("net")),"",Math.round(sum("docEarn")),Math.round(sum("godoc")),"",""];downloadCSV(`godoc-billing-${new Date().toISOString().slice(0,10)}.csv`,[head,...body,totals]);};
+  const gt="84px 1.2fr 1.1fr 76px 70px 64px 54px 84px 84px 100px 116px";
   return(<>
     <FilterBar onClear={()=>setF({from:"",to:"",doctor:"",status:"",method:""})}>
       <DateF value={f.from} onChange={v=>setF(s=>({...s,from:v}))} label="From"/>
@@ -1781,6 +1862,10 @@ function Billing({finances,updateFinance}){
       <Sel value={f.status} onChange={v=>setF(s=>({...s,status:v}))} options={PAY_STATUS} label="Payment"/>
       <Sel value={f.method} onChange={v=>setF(s=>({...s,method:v}))} options={PAY_METHOD} label="Method"/>
     </FilterBar>
+    <div className="flex flex-wrap items-center gap-2 mb-3">
+      <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white" style={{border:`1px solid ${C.line}`,color:C.ink}}><Download size={14}/>Export CSV</button>
+      <button onClick={()=>window.print()} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white" style={{border:`1px solid ${C.line}`,color:C.ink}}><FileText size={14}/>Print / PDF</button>
+    </div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[22px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
       <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
@@ -1800,11 +1885,12 @@ function Billing({finances,updateFinance}){
         <span className="col-span-4 font-semibold">{d.doctor}</span><span className="col-span-2 text-right tabular-nums">{d.sessions}</span><span className="col-span-2 text-right tabular-nums">{egp(d.rev)}</span><span className="col-span-2 text-right tabular-nums" style={{color:"#2E6E73"}}>{egp(d.doc)}</span><span className="col-span-2 text-right tabular-nums" style={{color:C.green}}>{egp(d.go)}</span></div>))}
     </div>
     <div className="bg-white rounded-2xl overflow-x-auto" style={{border:`1px solid ${C.line}`}}>
-      <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider grid gap-2 items-center" style={{color:C.grey,background:"#F4F4F2",gridTemplateColumns:gt,minWidth:"940px"}}>
-        <span>Date</span><span>Doctor</span><span>Patient</span><span>Type</span><span className="text-right">Fee</span><span className="text-right">Dr %</span><span className="text-right">Dr earn</span><span className="text-right">Go Doc</span><span>Status</span><span>Method</span></div>
-      {rows.map((r,i)=>(<div key={r.id} className="px-4 py-2.5 grid gap-2 items-center text-[12px]" style={{borderTop:i?`1px solid ${C.line}`:"none",gridTemplateColumns:gt,minWidth:"940px"}}>
+      <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider grid gap-2 items-center" style={{color:C.grey,background:"#F4F4F2",gridTemplateColumns:gt,minWidth:"1000px"}}>
+        <span>Date</span><span>Doctor</span><span>Patient</span><span>Type</span><span className="text-right">Fee</span><span className="text-right">Disc</span><span className="text-right">Dr %</span><span className="text-right">Dr earn</span><span className="text-right">Go Doc</span><span>Status</span><span>Method</span></div>
+      {rows.map((r,i)=>(<div key={r.id} className="px-4 py-2.5 grid gap-2 items-center text-[12px]" style={{borderTop:i?`1px solid ${C.line}`:"none",gridTemplateColumns:gt,minWidth:"1000px"}}>
         <span style={{color:C.grey}}>{r.date}</span><span className="font-semibold truncate">{r.doctor}</span><span className="truncate">{r.patient}</span><span style={{color:C.ink2}}>{r.type}</span>
         <input type="number" value={r.fee} onChange={e=>updateFinance(r.id,{fee:+e.target.value})} className="w-full px-1.5 py-1 rounded-md text-right tabular-nums outline-none" style={{border:`1px solid ${C.line}`}}/>
+        <input type="number" min="0" value={r.discount||0} onChange={e=>updateFinance(r.id,{discount:Math.max(0,+e.target.value)})} className="w-full px-1.5 py-1 rounded-md text-right tabular-nums outline-none" style={{border:`1px solid ${(r.discount||0)>0?"#8E5BB5":C.line}`,color:(r.discount||0)>0?"#8E5BB5":C.ink}}/>
         <input type="number" value={Math.round(r.pct*100)} onChange={e=>updateFinance(r.id,{pct:Math.min(100,Math.max(0,+e.target.value))/100})} className="w-full px-1.5 py-1 rounded-md text-right tabular-nums outline-none" style={{border:`1px solid ${C.line}`}}/>
         <span className="text-right tabular-nums" style={{color:"#2E6E73"}}>{egp(r.docEarn)}</span>
         <span className="text-right tabular-nums" style={{color:C.green}}>{egp(r.godoc)}</span>
@@ -1812,7 +1898,58 @@ function Billing({finances,updateFinance}){
         <select value={r.method} onChange={e=>updateFinance(r.id,{method:e.target.value})} className="px-1.5 py-1 rounded-md text-[12px] outline-none" style={{border:`1px solid ${C.line}`}}>{PAY_METHOD.map(m=><option key={m}>{m}</option>)}</select>
       </div>))}
     </div>
-    <p className="text-[11px] mt-3 flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Fee + Doctor % are the only inputs per row (defaults 500 EGP · 60%). Doctor earning, Go Doc %, Go Doc earning and all totals auto-calc — exactly like your tracker. Every logged session drops in here automatically. Admin-only.</p>
+    <p className="text-[11px] mt-3 flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Fee, Discount &amp; Doctor % are the inputs per row. Net = Fee − Discount; Refunded/Waived recognise no revenue. Doctor &amp; Go Doc earnings and all totals auto-calc on the net. Every logged session drops in here automatically. Admin-only.</p>
+  </>);
+}
+
+/* ---------- Doctor payouts — settle each doctor's earned share ---------- */
+function Payouts({finances,settleFinances,doctors=[]}){
+  const[f,setF]=useState({from:"",to:"",doctor:""});
+  const docOpts=[...new Set([...finances.map(x=>x.doctor),...doctors.map(d=>d.name)].filter(Boolean))];
+  const src=finances.filter(x=>(!(f.from||f.to)||inRange(x.date,f.from,f.to))&&(!f.doctor||x.doctor===f.doctor));
+  // doctor share = their % of net fee; refunded/waived earn nothing. Only collected (Paid) lines are settle-able.
+  const lines=src.map(x=>{const dead=x.status==="Refunded"||x.status==="Waived";return{...x,share:dead?0:netFee(x)*x.pct,collected:x.status==="Paid"};});
+  const byDoc=Object.values(lines.reduce((m,r)=>{
+    const k=r.doctor||"—";(m[k]||=({doctor:k,sessions:0,settled:0,owed:0,pending:0,owedIds:[],settledIds:[]}));const o=m[k];o.sessions++;
+    if(r.paidOut){o.settled+=r.share;if(r.share>0)o.settledIds.push(r.id);}
+    else if(r.collected){o.owed+=r.share;if(r.share>0)o.owedIds.push(r.id);}
+    else o.pending+=r.share;
+    return m;},{})).map(d=>({...d,earned:d.settled+d.owed})).sort((a,b)=>b.owed-a.owed);
+  const tot=k=>byDoc.reduce((a,d)=>a+d[k],0);
+  const cards=[["Collected earnings",egp(tot("earned")),"#2E6E73"],["Settled (paid out)",egp(tot("settled")),C.green],["Owed now",egp(tot("owed")),C.amber],["Pending collection",egp(tot("pending")),C.grey]];
+  const exportCSV=()=>{const head=["Doctor","Sessions","Collected earnings","Settled","Owed now","Pending collection"];const body=byDoc.map(d=>[d.doctor,d.sessions,Math.round(d.earned),Math.round(d.settled),Math.round(d.owed),Math.round(d.pending)]);downloadCSV(`godoc-payouts-${new Date().toISOString().slice(0,10)}.csv`,[head,...body]);};
+  return(<>
+    <FilterBar onClear={()=>setF({from:"",to:"",doctor:""})}>
+      <DateF value={f.from} onChange={v=>setF(s=>({...s,from:v}))} label="From"/>
+      <DateF value={f.to} onChange={v=>setF(s=>({...s,to:v}))} label="To"/>
+      <Sel value={f.doctor} onChange={v=>setF(s=>({...s,doctor:v}))} options={docOpts} label="Doctor"/>
+    </FilterBar>
+    <div className="flex flex-wrap items-center gap-2 mb-3">
+      <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white" style={{border:`1px solid ${C.line}`,color:C.ink}}><Download size={14}/>Export CSV</button>
+      <button onClick={()=>window.print()} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white" style={{border:`1px solid ${C.line}`,color:C.ink}}><FileText size={14}/>Print / PDF</button>
+    </div>
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
+    <div className="space-y-3">
+      {byDoc.length===0&&<div className="bg-white rounded-2xl p-6 text-[13px]" style={{border:`1px solid ${C.line}`,color:C.grey}}>No earnings in this range.</div>}
+      {byDoc.map(d=>(
+        <div key={d.doctor} className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
+          <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold" style={{background:C.tealSoft,color:C.ink}}>{(d.doctor[0]||"?").toUpperCase()}</div>
+              <div><div className="font-bold text-[15px]" style={{fontFamily:HEAD}}>{d.doctor}</div><div className="text-[11px]" style={{color:C.grey}}>{d.sessions} session{d.sessions>1?"s":""}</div></div>
+            </div>
+            <div className="flex items-center gap-2">
+              {d.owed>0&&settleFinances&&<button onClick={()=>{if(confirm(`Mark ${egp(d.owed)} as paid out to ${d.doctor}?`))settleFinances(d.owedIds,true);}} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:C.green}}><Banknote size={14}/>Settle {egp(d.owed)}</button>}
+              {d.settled>0&&settleFinances&&<button onClick={()=>{if(confirm(`Reverse ${d.settledIds.length} settled payout line(s) for ${d.doctor}?`))settleFinances(d.settledIds,false);}} className="px-3 py-2 rounded-xl text-[12px] font-semibold" style={{background:"#fff",color:C.ink2,border:`1px solid ${C.line}`}}>Reverse</button>}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[["Collected","#2E6E73",d.earned],["Settled",C.green,d.settled],["Owed now",C.amber,d.owed],["Pending",C.grey,d.pending]].map(([l,c,v])=>(
+              <div key={l} className="rounded-xl px-3 py-2" style={{background:C.bg}}><div className="text-[11px]" style={{color:C.grey}}>{l}</div><div className="text-[15px] font-bold tabular-nums" style={{color:c}}>{egp(v)}</div></div>))}
+          </div>
+        </div>))}
+    </div>
+    <p className="text-[11px] mt-3 flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Only <b>Paid</b> sessions are settle-able (you can only pay out what's collected). Settling marks each session line as paid-out. Pending collection is the doctor's share of sessions not yet paid by the patient.</p>
   </>);
 }
 
@@ -1861,9 +1998,14 @@ function GrowthAuto({finances,expenses,addExpense,updateExpense,removeExpense,pa
   const totMkt=rows.reduce((a,r)=>a+r.marketing,0),totNew=rows.reduce((a,r)=>a+r.newPts,0);
   const totRev=rows.reduce((a,r)=>a+r.billedRev,0),totGo=rows.reduce((a,r)=>a+r.billedGo,0),totExp=rows.reduce((a,r)=>a+r.allExp,0),totNet=totGo-totExp;
   const cards=[["Total marketing spend",egp(totMkt),C.ink],["New patients",totNew,"#2E6E73"],["Blended CAC",totNew?egp(totMkt/totNew):"—",C.amber],["Total operating expenses",egp(totExp),C.red],["Total net income",egp(totNet),totNet>=0?C.green:C.red]];
+  const exportCSV=()=>{const head=["Month","New patients","Marketing","CAC","Revenue billed","Go Doc earnings","Expenses","Net profit","Same-month rev","Lifetime rev"];const body=rows.map(r=>[monthLabel(r.m),r.newPts,Math.round(r.marketing),r.newPts&&r.marketing?Math.round(r.cac):"",Math.round(r.billedRev),Math.round(r.billedGo),Math.round(r.allExp),Math.round(r.net),Math.round(r.sameMonthRev),Math.round(r.lifetimeRev)]);const totals=["TOTAL",totNew,Math.round(totMkt),totNew?Math.round(totMkt/totNew):"",Math.round(totRev),Math.round(totGo),Math.round(totExp),Math.round(totNet),"",""];downloadCSV(`godoc-growth-pnl-${new Date().toISOString().slice(0,10)}.csv`,[head,...body,totals]);};
 
   return(<div>
     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">{cards.map(([l,v,c])=>(<div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}</div>
+    <div className="flex flex-wrap items-center gap-2 mb-4">
+      <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white" style={{border:`1px solid ${C.line}`,color:C.ink}}><Download size={14}/>Export P&amp;L CSV</button>
+      <button onClick={()=>window.print()} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white" style={{border:`1px solid ${C.line}`,color:C.ink}}><FileText size={14}/>Print / PDF</button>
+    </div>
 
     {/* expense entry + list */}
     <div className="bg-white rounded-2xl p-5 mb-4" style={{border:`1px solid ${C.line}`}}>
@@ -2226,8 +2368,10 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
   const completedVisits=(visits||[]).filter(v=>v.patientId===patient.id&&v.status==="completed");
   const undocVisits=completedVisits.filter(v=>!v.soapFiled).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
   const sessionsTotal=Math.max(hist.length,completedVisits.length);
-  const myFin=(finances||[]).filter(f=>f.patient===patient.name).map(f=>({...f,docEarn:f.fee*f.pct,godoc:f.fee*(1-f.pct)}));
-  const billed=myFin.reduce((a,r)=>a+r.fee,0), paidAmt=myFin.filter(r=>r.status==="Paid").reduce((a,r)=>a+r.fee,0), pendAmt=billed-paidAmt;
+  const myFin=(finances||[]).filter(f=>f.patient===patient.name).map(f=>{const dead=f.status==="Refunded"||f.status==="Waived";const eff=dead?0:netFee(f);return{...f,net:netFee(f),docEarn:eff*f.pct,godoc:eff*(1-f.pct)};});
+  const billed=myFin.reduce((a,r)=>a+(r.fee||0),0);
+  const paidAmt=myFin.filter(r=>r.status==="Paid").reduce((a,r)=>a+r.net,0);
+  const pendAmt=myFin.filter(r=>r.status==="Pending"||r.status==="Partial").reduce((a,r)=>a+r.net,0);
   const[mode,setMode]=useState("profile");const[sub,setSub]=useState("overview");
   const[tlType,setTlType]=useState("");const[open,setOpen]=useState(null);const[docs,setDocs]=useState(patient.files||[]);
   const[summary,setSummary]=useState(patient.discharge?.summary||"");
@@ -2376,20 +2520,25 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
 
       {/* ============ FINANCE (admin) ============ */}
       {mode==="profile"&&sub==="finance"&&<div className="p-6 space-y-4">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="text-[14px] font-bold" style={{fontFamily:HEAD}}>Billing summary</h3>
+          <button onClick={()=>printInvoice(patient,myFin,"EGP")} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:C.ink}}><Receipt size={14}/>Invoice / Receipt</button>
+        </div>
         <div className="grid grid-cols-3 gap-3">
           {[["Total billed",egp(billed),C.ink],["Paid",egp(paidAmt),C.green],["Outstanding",egp(pendAmt),C.amber]].map(([l,v,c])=>(
             <div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}
         </div>
         <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
           <div className="px-5 py-2.5 text-[11px] font-bold uppercase tracking-wider grid grid-cols-12 gap-2" style={{color:C.grey,background:"#F4F4F2"}}>
-            <span className="col-span-3">Date</span><span className="col-span-3">Type</span><span className="col-span-2 text-right">Fee</span><span className="col-span-2">Status</span><span className="col-span-2">Method</span></div>
+            <span className="col-span-3">Date</span><span className="col-span-2">Type</span><span className="col-span-2 text-right">Fee</span><span className="col-span-2 text-right">Net</span><span className="col-span-3">Status</span></div>
           {myFin.map((r,i)=>(<div key={r.id} className="px-5 py-3 grid grid-cols-12 gap-2 text-[12px] items-center" style={{borderTop:i?`1px solid ${C.line}`:"none"}}>
-            <span className="col-span-3" style={{color:C.grey}}>{r.date}</span><span className="col-span-3">{r.type}</span><span className="col-span-2 text-right tabular-nums">{egp(r.fee)}</span>
-            <span className="col-span-2"><span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:payColor[r.status]+"22",color:payColor[r.status]}}>{r.status}</span></span>
-            <span className="col-span-2" style={{color:C.ink2}}>{r.method}</span></div>))}
+            <span className="col-span-3" style={{color:C.grey}}>{r.date}</span><span className="col-span-2">{r.type}</span>
+            <span className="col-span-2 text-right tabular-nums">{egp(r.fee)}{(r.discount||0)>0&&<span className="block text-[10px]" style={{color:"#8E5BB5"}}>−{egp(r.discount)}</span>}</span>
+            <span className="col-span-2 text-right tabular-nums font-semibold">{egp(r.net)}</span>
+            <span className="col-span-3 flex items-center gap-2"><span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:payColor[r.status]+"22",color:payColor[r.status]}}>{r.status}</span><span className="text-[11px]" style={{color:C.grey}}>{r.method}</span></span></div>))}
           {!myFin.length&&<div className="px-5 py-4 text-[13px]" style={{color:C.grey}}>No billed sessions yet.</div>}
         </div>
-        <p className="text-[11px] flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Admin-only — edit fees in the Finances tab.</p>
+        <p className="text-[11px] flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Admin-only — edit fees &amp; discounts in the Finances tab. Net = Fee − Discount.</p>
       </div>}
 
       {/* ============ DISCHARGE FORM ============ */}
