@@ -111,12 +111,14 @@ export function useDataStore({ role, me }) {
   // ---- HELPERS ----
   const nowISO = () => new Date().toISOString()
 
-  const notify = useCallback(async (target, text, to) => {
+  // `link` is an optional { view?, patientId?, visitId? } payload telling the
+  // UI where to jump when the notification is tapped (see NotifBell / navigate).
+  const notify = useCallback(async (target, text, to, link = null) => {
     const tmpId = Date.now() + Math.random()
-    setNotifs((ns) => [{ id: tmpId, ts: Date.now(), target, to, text, read: false }, ...ns])
+    setNotifs((ns) => [{ id: tmpId, ts: Date.now(), target, to, text, read: false, link }, ...ns])
     const { data, error } = await supabase
       .from('notifications')
-      .insert({ target, to: to || null, text })
+      .insert({ target, to: to || null, text, link })
       .select()
       .single()
     if (error) console.warn('notify failed', error)
@@ -168,7 +170,7 @@ export function useDataStore({ role, me }) {
   const updatePatientStatus = useCallback((pid, to, note) => {
     const pt = patients.find((p) => p.id === pid)
     changeStatus(pid, to, note)
-    if (pt) notify('admin', `${pt.name} marked ${to}${note ? ` — ${note}` : ''}`)
+    if (pt) notify('admin', `${pt.name} marked ${to}${note ? ` — ${note}` : ''}`, null, { patientId: pid })
   }, [patients, changeStatus, notify])
 
   const addPatient = useCallback(async (p, booked, date, doctor) => {
@@ -192,8 +194,8 @@ export function useDataStore({ role, me }) {
         await _billVisit(iv, inserted.name)
       }
     }
-    notify('admin', booked ? `New booking: ${p.name} → ${doctor} (${date})` : `New lead added: ${p.name}`)
-    if (booked) notify('doctor', `New patient booked with you: ${p.name}`, doctor)
+    notify('admin', booked ? `New booking: ${p.name} → ${doctor} (${date})` : `New lead added: ${p.name}`, null, { patientId: inserted.id })
+    if (booked) notify('doctor', `New patient booked with you: ${p.name}`, doctor, { patientId: inserted.id })
   }, [config, notify, _billVisit])
 
   const updatePatientFiles = useCallback(async (pid, files) => {
@@ -221,7 +223,7 @@ export function useDataStore({ role, me }) {
       setFinances((fs) => fs.map((f) => f.patient === prev.name ? { ...f, patient: patch.name } : f))
       await supabase.from('finances').update({ patient: patch.name }).eq('patient', prev.name)
     }
-    notify('admin', `Patient profile updated: ${next.name}`)
+    notify('admin', `Patient profile updated: ${next.name}`, null, { patientId: pid })
   }, [patients, notify])
 
   const assignDoctor = useCallback(async (pid, name) => {
@@ -243,7 +245,7 @@ export function useDataStore({ role, me }) {
         await _billVisit(iv, pt?.name)
       }
     }
-    if (name) notify('doctor', `You were assigned to ${pt?.name || 'a patient'} — visit added to your list`, name)
+    if (name) notify('doctor', `You were assigned to ${pt?.name || 'a patient'} — visit added to your list`, name, { patientId: pid })
   }, [patients, visits, changeStatus, notify, _billVisit])
 
   // Calendly-style booking: drops a scheduled visit at a specific date/time.
@@ -290,11 +292,11 @@ export function useDataStore({ role, me }) {
       else if (fdata) setFinances((fs) => [...fs, ...fdata.map(fromFinance)])
     }
     if (n > 1) {
-      notify('admin', `${n} sessions booked: ${pname} → ${doctorName || '—'}${date ? ` (1st on ${date})` : ' (dates open)'}`)
-      if (doctorName && booker !== 'doctor') notify('doctor', `${n} sessions booked: ${pname}`, doctorName)
+      notify('admin', `${n} sessions booked: ${pname} → ${doctorName || '—'}${date ? ` (1st on ${date})` : ' (dates open)'}`, null, { patientId: pid })
+      if (doctorName && booker !== 'doctor') notify('doctor', `${n} sessions booked: ${pname}`, doctorName, { patientId: pid })
     } else {
-      notify('admin', `Session booked: ${pname} → ${doctorName || '—'} (${date || '—'} ${time || ''})`)
-      if (doctorName && booker !== 'doctor') notify('doctor', `New session booked: ${pname} (${date || '—'} ${time || ''})`, doctorName)
+      notify('admin', `Session booked: ${pname} → ${doctorName || '—'} (${date || '—'} ${time || ''})`, null, { patientId: pid })
+      if (doctorName && booker !== 'doctor') notify('doctor', `New session booked: ${pname} (${date || '—'} ${time || ''})`, doctorName, { patientId: pid })
     }
   }, [patients, config, notify])
 
@@ -369,8 +371,8 @@ export function useDataStore({ role, me }) {
       if (fd) setFinances((fs) => [...fs, fromFinance(fd)])
     }
 
-    notify('admin', `${n.doctorName} submitted a ${n.type} note for ${n.patientName} — awaiting review`)
-    if (n.redFlag) notify('admin', `⚠ Red flag raised by ${n.doctorName} for ${n.patientName}`)
+    notify('admin', `${n.doctorName} submitted a ${n.type} note for ${n.patientName} — awaiting review`, null, { view: 'review', patientId: n.patientId })
+    if (n.redFlag) notify('admin', `⚠ Red flag raised by ${n.doctorName} for ${n.patientName}`, null, { view: 'review', patientId: n.patientId })
   }, [visits, patients, finances, config, changeStatus, notify])
 
   const reviewNote = useCallback(async (id, s) => {
@@ -378,7 +380,7 @@ export function useDataStore({ role, me }) {
     setNotes((ns) => ns.map((x) => x.id === id ? { ...x, state: s, reviewedAt: nowISO() } : x))
     await supabase.from('notes').update({ state: s, reviewed_at: nowISO() }).eq('id', id)
     const word = s === 'approved' ? 'approved' : s === 'approved_comment' ? 'approved with a comment' : 'sent back for revision'
-    if (n) notify('doctor', `Your ${n.type} note for ${n.patientName} was ${word}`, n.doctorName)
+    if (n) notify('doctor', `Your ${n.type} note for ${n.patientName} was ${word}`, n.doctorName, { patientId: n.patientId })
   }, [notes, notify])
 
   const openNoteForReview = useCallback(async (id) => {
@@ -405,7 +407,7 @@ export function useDataStore({ role, me }) {
     setPatients((ps) => ps.map((p) => p.id === pid ? { ...p, discharge: report } : p))
     await supabase.from('patients').update({ discharge: report }).eq('id', pid)
     changeStatus(pid, 'discharged', `${report?.improvePct ?? 0}% improvement over ${report?.sessions ?? 0} sessions`)
-    notify('admin', `${pt?.name || 'Patient'} discharged — ${report?.improvePct ?? 0}% improvement over ${report?.sessions ?? 0} sessions`)
+    notify('admin', `${pt?.name || 'Patient'} discharged — ${report?.improvePct ?? 0}% improvement over ${report?.sessions ?? 0} sessions`, null, { patientId: pid })
   }, [patients, changeStatus, notify])
 
   // Permanently delete a patient and everything tied to them (visits, notes,
@@ -483,7 +485,7 @@ export function useDataStore({ role, me }) {
     const { data, error } = await supabase.from('expenses').insert(toExpense(e)).select().single()
     if (error) { console.error('addExpense', error); return }
     setExpenses((xs) => [...xs, fromExpense(data)])
-    notify('admin', `Expense logged: ${e.category}${e.label ? ` · ${e.label}` : ''} — ${e.amount} (${e.month})`)
+    notify('admin', `Expense logged: ${e.category}${e.label ? ` · ${e.label}` : ''} — ${e.amount} (${e.month})`, null, { view: 'finances' })
   }, [notify])
 
   const updateExpense = useCallback(async (id, patch) => {
@@ -536,7 +538,7 @@ export function useDataStore({ role, me }) {
     if (v) {
       const pt = patients.find((p) => p.id === v.patientId)
       const tail = status === 'cancelled' ? ` (by ${by || 'admin'})` : ''
-      notify('admin', `${pt?.name || 'Visit'} → ${status}${tail}`)
+      notify('admin', `${pt?.name || 'Visit'} → ${status}${tail}`, null, { patientId: v.patientId })
       // Cancelling a session voids its still-unpaid billing line so the books
       // don't carry revenue for a session that never happened.
       if (status === 'cancelled') {
@@ -619,8 +621,8 @@ export function useDataStore({ role, me }) {
     }))
     const { data: vdata } = await supabase.from('visits').insert(slots).select()
     if (vdata) setVisits((vs) => [...vs, ...vdata.map(fromVisit)])
-    notify('admin', `Package created: ${pack.title || 'plan'} for ${pack.patientName} — ${n} sessions`)
-    if (pack.doctorName) notify('doctor', `New treatment package assigned: ${pack.patientName} — ${pack.title || 'plan'} (${n} sessions)`, pack.doctorName)
+    notify('admin', `Package created: ${pack.title || 'plan'} for ${pack.patientName} — ${n} sessions`, null, { patientId: pack.patientId })
+    if (pack.doctorName) notify('doctor', `New treatment package assigned: ${pack.patientName} — ${pack.title || 'plan'} (${n} sessions)`, pack.doctorName, { patientId: pack.patientId })
     return pack
   }, [patients, notify])
 
@@ -686,7 +688,7 @@ export function useDataStore({ role, me }) {
     for (const v of open) await supabase.from('visits').update({ status: 'cancelled', cancelled_by: 'admin' }).eq('id', v.id)
     setVisits((vs) => vs.map((v) => v.packageId === packageId && !v.soapFiled && v.status !== 'completed' ? { ...v, status: 'cancelled', cancelledBy: 'admin' } : v))
     const pack = packages.find((p) => p.id === packageId)
-    notify('admin', `Package ended${pack ? `: ${pack.patientName}` : ''}${reason ? ` — ${reason}` : ''} — payment reconciliation due`)
+    notify('admin', `Package ended${pack ? `: ${pack.patientName}` : ''}${reason ? ` — ${reason}` : ''} — payment reconciliation due`, null, pack ? { patientId: pack.patientId } : null)
   }, [visits, packages, notify])
 
   // ---- REMINDERS & RESCHEDULE (§3.4, §5) ----
@@ -712,7 +714,7 @@ export function useDataStore({ role, me }) {
     if (nextStatus !== v.status) patch.status = nextStatus
     setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, [camel]: true, status: nextStatus } : x))
     await supabase.from('visits').update(patch).eq('id', vid)
-    notify('admin', `WhatsApp reminder (${kind}) ${opened ? 'opened for' : 'prepared for'} ${pt?.name || 'patient'}${pt?.phone ? '' : ' — no phone on file'}: "${msg}"`)
+    notify('admin', `WhatsApp reminder (${kind}) ${opened ? 'opened for' : 'prepared for'} ${pt?.name || 'patient'}${pt?.phone ? '' : ' — no phone on file'}: "${msg}"`, null, { view: 'calendar', patientId: v.patientId })
   }, [visits, patients, config, notify])
 
   // Doctor cannot cancel directly — this raises a request to admin (§3.3).
@@ -734,7 +736,7 @@ export function useDataStore({ role, me }) {
     const v = visits.find((x) => x.id === vid)
     const pt = v && patients.find((p) => p.id === v.patientId)
     const range = prefFrom || prefTo ? ` (prefers ${prefFrom || '…'} → ${prefTo || '…'})` : ''
-    notify('admin', `${by || 'Doctor'} requested reschedule for ${pt?.name || 'a session'}${note ? ` — ${note}` : ''}${range}`)
+    notify('admin', `${by || 'Doctor'} requested reschedule for ${pt?.name || 'a session'}${note ? ` — ${note}` : ''}${range}`, null, { view: 'calendar' })
   }, [visits, patients, notify])
 
   // Admin actions a reschedule: clears the request flag and range (optionally moving the date).

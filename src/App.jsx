@@ -941,11 +941,12 @@ function Srch({value,onChange,ph}){return(<div className="flex items-center gap-
   <Search size={14} color={C.grey}/><input value={value} onChange={e=>onChange(e.target.value)} placeholder={ph||"Search…"} className="text-[13px] outline-none bg-transparent w-32"/></div>);}
 
 /* ---------- notification bell ---------- */
-function NotifBell({items,onOpen,dark}){
+function NotifBell({items,onOpen,onNavigate,dark}){
   const[show,setShow]=useState(false);
   const unread=items.filter(n=>!n.read).length;
   const ago=ts=>{const m=Math.round((Date.now()-ts)/60000);return m<1?"now":m<60?`${m}m ago`:m<1440?`${Math.round(m/60)}h ago`:`${Math.round(m/1440)}d ago`;};
   const toggle=()=>{const ns=!show;setShow(ns);if(ns)onOpen&&onOpen();};
+  const open=(n)=>{if(n.link&&onNavigate){setShow(false);onNavigate(n.link);}};
   return(<div className="relative">
     <button onClick={toggle} className="relative w-9 h-9 rounded-full flex items-center justify-center" style={{background:dark?"rgba(255,255,255,0.12)":"#fff",border:dark?"none":`1px solid ${C.line}`}}>
       <Bell size={17} color={dark?"#fff":C.ink}/>
@@ -955,10 +956,12 @@ function NotifBell({items,onOpen,dark}){
       <div className="absolute right-0 mt-2 w-[300px] max-h-[360px] overflow-y-auto rounded-2xl z-50" style={{background:"#fff",border:`1px solid ${C.line}`,boxShadow:"0 12px 32px rgba(30,42,58,0.18)"}}>
         <div className="px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider sticky top-0" style={{color:C.grey,background:"#fff",borderBottom:`1px solid ${C.line}`}}>Notifications</div>
         {items.length===0&&<div className="px-4 py-6 text-[13px] text-center" style={{color:C.grey}}>Nothing yet — you’re all caught up.</div>}
-        {items.map(n=>(<div key={n.id} className="px-4 py-3 flex gap-2.5" style={{borderTop:`1px solid ${C.line}`,background:n.read?"#fff":"#F4FBFC"}}>
+        {items.map(n=>{const clickable=!!(n.link&&onNavigate);return(
+          <div key={n.id} onClick={()=>open(n)} className="px-4 py-3 flex gap-2.5" style={{borderTop:`1px solid ${C.line}`,background:n.read?"#fff":"#F4FBFC",cursor:clickable?"pointer":"default"}}>
           <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{background:n.read?C.line:C.teal}}/>
-          <div className="flex-1"><div className="text-[13px] leading-snug" style={{color:C.ink}}>{n.text}</div><div className="text-[11px] mt-0.5" style={{color:C.grey}}>{ago(n.ts)}</div></div>
-        </div>))}
+          <div className="flex-1"><div className="text-[13px] leading-snug" style={{color:C.ink}}>{n.text}</div>
+            <div className="text-[11px] mt-0.5 flex items-center gap-1" style={{color:C.grey}}>{ago(n.ts)}{clickable&&<span className="font-semibold" style={{color:C.teal}}>· Open →</span>}</div></div>
+        </div>);})}
       </div></>}
   </div>);
 }
@@ -1165,6 +1168,9 @@ function _LegacyMockApp(){
 function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
+  // Notification deep-link: a tapped notification jumps to the relevant place.
+  // A `view` (tab) takes priority; otherwise open the patient's file.
+  const navigate=(link)=>{if(!link)return;if(link.view){setTab(link.view);}else if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}};
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
   const tabs=[["today","Today",LayoutGrid],["calendar","Calendar",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
   const statusMix=STATUSES.map(s=>({name:STATUS_LABEL[s],key:s,v:patients.filter(p=>p.status===s).length})).filter(x=>x.v);
@@ -1187,7 +1193,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     <header className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
       <h1 className="text-[19px] sm:text-[22px] font-extrabold capitalize" style={{fontFamily:HEAD,color:C.ink}}>{tab}</h1>
       <div className="flex items-center gap-2 sm:gap-3">
-        <NotifBell items={(notifs||[]).filter(n=>n.target==="admin")} onOpen={()=>markRead&&markRead("admin")}/>
+        <NotifBell items={(notifs||[]).filter(n=>n.target==="admin")} onOpen={()=>markRead&&markRead("admin")} onNavigate={navigate}/>
         <button onClick={()=>setIntake(true)} className="flex items-center gap-1.5 px-3 sm:px-4 py-2.5 rounded-xl text-white font-semibold text-[14px] shrink-0" style={{background:C.ink}}><Plus size={16}/><span className="hidden sm:inline">New patient</span><span className="sm:hidden">New</span></button>
       </div>
     </header>
@@ -2822,6 +2828,8 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
     ?<div className="mt-2 text-[11.5px] font-semibold" style={{color:"#9B7BB8"}}><div className="flex items-center gap-1.5"><Clock size={12}/>Reschedule requested — awaiting admin</div>{(v.rescheduleNote||v.reschedulePrefFrom||v.reschedulePrefTo)&&<div className="mt-0.5 font-normal" style={{color:C.grey}}>{v.rescheduleNote||""}{fmtRange(v)}</div>}</div>
     :<button onClick={(e)=>{e.stopPropagation();setReschedTarget(v);}} className="mt-2 text-[11.5px] font-semibold" style={{color:C.grey}}>Request reschedule →</button>);
   const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);const[booking,setBooking]=useState(null);
+  // Notification deep-link: jump to a tab (view) or open the patient's file.
+  const navigate=(link)=>{if(!link)return;if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}else if(link.view){const t=link.view==="review"||link.view==="finances"?"patients":link.view==="calendar"?"calendar":link.view;setTab(t);}};
   const mine=visits.filter(v=>v.doctorName===me&&v.status!=="completed"&&!v.packageId);
   const myPackages=(packages||[]).filter(pk=>pk.doctorName===me&&pk.status!=="ended");
   const pkgById=id=>(packages||[]).find(pk=>pk.id===id);
@@ -2840,7 +2848,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5"><div className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:C.teal}}><Stethoscope size={18} color={C.ink}/></div>
             <div><h1 className="text-white text-[18px] font-bold" style={{fontFamily:HEAD}}>{me}</h1><p className="text-[12px]" style={{color:C.tealSoft}}>{mine.length} upcoming · {mySlots.length} slots/wk</p></div></div>
-          <NotifBell items={(notifs||[]).filter(n=>n.target==="doctor"&&(!n.to||n.to===me))} onOpen={()=>markRead&&markRead("doctor",me)} dark/>
+          <NotifBell items={(notifs||[]).filter(n=>n.target==="doctor"&&(!n.to||n.to===me))} onOpen={()=>markRead&&markRead("doctor",me)} onNavigate={navigate} dark/>
         </div>
         <div className="flex gap-1.5 mt-4">
           {[["visits","Visits"],["calendar","Calendar"],["patients","Patients"],["avail","Availability"]].map(([k,l])=>(<button key={k} onClick={()=>setTab(k)} className="flex-1 py-2 rounded-xl text-[12px] font-bold" style={{background:tab===k?C.teal:"rgba(255,255,255,0.1)",color:tab===k?C.ink:"#fff"}}>{l}</button>))}

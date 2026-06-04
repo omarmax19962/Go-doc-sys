@@ -309,4 +309,5 @@ export const fromNotif = (r) => ({
   to: r.to,
   text: r.text,
   read: r.read,
+  link: r.link || null,
 })
