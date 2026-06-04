@@ -794,6 +794,11 @@ const pad2=n=>String(n).padStart(2,"0");
 const ymd=d=>`${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 const parseHM=t=>{const m=/^(\d{1,2}):(\d{2})$/.exec(String(t||"").trim());if(!m)return null;const h=+m[1],mi=+m[2];if(h>23||mi>59)return null;return h*60+mi;};
 const hm=mins=>`${pad2(Math.floor(mins/60))}:${pad2(mins%60)}`;
+// 12-hour display helpers (AM/PM). hm/`HH:MM` stay the storage/value format;
+// these are for what the user reads on screen.
+const hm12=mins=>{let h=Math.floor(mins/60);const m=mins%60;const ap=h<12?"AM":"PM";let hh=h%12;if(hh===0)hh=12;return`${hh}:${pad2(m)} ${ap}`;};
+const hourLabel12=h=>{const hh24=((h%24)+24)%24;const ap=hh24<12?"AM":"PM";let hh=hh24%12;if(hh===0)hh=12;return`${hh} ${ap}`;};
+const to12=t=>{const mins=parseHM(t);return mins==null?(t||""):hm12(mins);};
 const startOfWeekMon=d=>{const x=new Date(d);const off=(x.getDay()+6)%7;x.setDate(x.getDate()-off);x.setHours(0,0,0,0);return x;};
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x;};
 const sameYMD=(a,b)=>ymd(a)===ymd(b);
@@ -1231,7 +1236,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
         <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
           {fVisits.length===0&&<div className="px-5 py-4 text-[13px]" style={{color:C.grey}}>No visits match these filters.</div>}
           {fVisits.map((v,i)=>(<div key={v.id} className="px-5 py-4 flex items-center justify-between" style={{borderTop:i?`1px solid ${C.line}`:"none"}}>
-            <div className="flex items-center gap-3"><span className="font-bold tabular-nums">{v.date||v.time}</span>
+            <div className="flex items-center gap-3"><span className="font-bold tabular-nums">{v.date||to12(v.time)}</span>
               <div><div className="font-semibold flex items-center gap-1.5">{nameOf(v.patientId)}
                 {v.status==="completed"&&<span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background:v.soapFiled?C.green+"22":C.amber+"22",color:v.soapFiled?C.green:"#9a6a00"}}>{v.soapFiled?"SOAP filed":"SOAP missing"}</span>}</div>
                 <div className="text-[12px]" style={{color:C.grey}}>{v.doctorName} · {VISIT_TYPE_LABEL[v.type]||v.type}{v.status==="cancelled"&&v.cancelledBy?` · cancelled by ${v.cancelledBy}`:""}</div></div></div>
@@ -1406,7 +1411,7 @@ function MiniCalendar({value,onPick,min,rangeFrom,rangeTo}){
   </div>);
 }
 
-function TimeGrid({events=[],defaultView="week",onSlotClick,onEventClick,startHour=8,endHour=21,compact=false}){
+function TimeGrid({events=[],defaultView="week",onSlotClick,onEventClick,startHour=0,endHour=24,compact=false}){
   const[view,setView]=useState(defaultView);
   const[anchor,setAnchor]=useState(()=>{const d=new Date();d.setHours(0,0,0,0);return d;});
   const today=new Date();
@@ -1464,7 +1469,7 @@ function TimeGrid({events=[],defaultView="week",onSlotClick,onEventClick,startHo
           <div key={i} onClick={()=>onSlotClick&&onSlotClick(ymd(d),"09:00")} className="min-h-[92px] p-1.5 cursor-pointer" style={{borderRight:(i%7!==6)?`1px solid ${C.line}`:"none",borderBottom:i<35?`1px solid ${C.line}`:"none",background:inMonth?"#fff":"#FAFAF8"}}>
             <div className="flex justify-end"><span className="text-[11px] font-semibold w-6 h-6 flex items-center justify-center rounded-full" style={{background:isToday?C.ink:"transparent",color:isToday?"#fff":inMonth?C.ink2:C.grey}}>{d.getDate()}</span></div>
             <div className="space-y-0.5 mt-0.5">{evs.slice(0,3).map(ev=>(<button key={ev.id} onClick={(e)=>{e.stopPropagation();onEventClick&&onEventClick(ev);}} className="w-full flex items-center gap-1 px-1 py-0.5 rounded text-left" style={{background:(ev.color||C.teal)+"22"}}>
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{background:ev.color||C.teal}}/><span className="text-[10px] truncate" style={{color:C.ink}}>{ev.start!=null?hm(ev.start)+" ":""}{ev.title}</span></button>))}
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{background:ev.color||C.teal}}/><span className="text-[10px] truncate" style={{color:C.ink}}>{ev.start!=null?hm12(ev.start)+" ":""}{ev.title}</span></button>))}
               {evs.length>3&&<div className="text-[10px] pl-1" style={{color:C.grey}}>+{evs.length-3} more</div>}</div>
           </div>);})}</div>
       </div>
@@ -1472,7 +1477,7 @@ function TimeGrid({events=[],defaultView="week",onSlotClick,onEventClick,startHo
   }
 
   // ----- DAY / WEEK VIEW -----
-  const gutter=compact?44:52;
+  const gutter=compact?48:58;
   return(<div>
     <TimeGridHeader title={title} view={view} setView={setView} step={step} goToday={goToday}/>
     <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
@@ -1493,7 +1498,7 @@ function TimeGrid({events=[],defaultView="week",onSlotClick,onEventClick,startHo
       <div className="grid relative" style={{gridTemplateColumns:`${gutter}px repeat(${days.length},minmax(0,1fr))`}}>
         {/* hour gutter */}
         <div className="relative" style={{height:totalH}}>
-          {hours.map(h=>(<div key={h} className="absolute right-1.5 text-[10px]" style={{top:(h-startHour)*hourH-6,color:C.grey}}>{h===24?"":pad2(h)+":00"}</div>))}
+          {hours.map(h=>(<div key={h} className="absolute right-1.5 text-[10px] whitespace-nowrap" style={{top:(h-startHour)*hourH-6,color:C.grey}}>{h===24?"":hourLabel12(h)}</div>))}
         </div>
         {days.map((d,di)=>{const evs=(evByDay[ymd(d)]||[]).filter(ev=>ev.start!=null).sort((a,b)=>a.start-b.start);const isToday=sameYMD(d,today);const nowMin=today.getHours()*60+today.getMinutes();return(
           <div key={di} className="relative" style={{height:totalH,borderLeft:`1px solid ${C.line}`}}>
@@ -1616,7 +1621,7 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
   return(<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.5)"}} onClick={onClose}>
     <div className="w-full max-w-[360px] rounded-2xl overflow-hidden" style={{background:"#fff"}} onClick={e=>e.stopPropagation()}>
       <div className="px-4 py-3 flex items-center justify-between" style={{borderBottom:`1px solid ${C.line}`,background:(ev.color||C.teal)+"22"}}>
-        <div><div className="text-[15px] font-bold" style={{color:C.ink}}>{nameOf(v.patientId)}</div><div className="text-[11px]" style={{color:C.ink2}}>{v.doctorName} · {v.date||"—"} {v.time} · {VISIT_TYPE_LABEL[v.type]||v.type}</div></div>
+        <div><div className="text-[15px] font-bold" style={{color:C.ink}}>{nameOf(v.patientId)}</div><div className="text-[11px]" style={{color:C.ink2}}>{v.doctorName} · {v.date||"—"} {to12(v.time)} · {VISIT_TYPE_LABEL[v.type]||v.type}</div></div>
         <button onClick={onClose}><X size={18} color={C.grey}/></button></div>
       <div className="p-4 space-y-3">
         <div className="text-[11px]" style={{color:C.ink2}}><span className="font-bold uppercase text-[10px]" style={{color:C.grey}}>Booked by</span> · {v.bookedBy==="relative"?`Relative — ${v.relativeName||"—"}${v.relativeRelation?` (${v.relativeRelation})`:""}`:"Patient"}</div>
@@ -2851,7 +2856,7 @@ function RescheduleRequestModal({v,patientName,onClose,onSubmit}){
     <div className="bg-white w-full max-w-[400px] rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
       <div className="flex items-center justify-between mb-1"><h3 className="text-[17px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>Request reschedule</h3>
         <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{background:C.bg}}><X size={16} color={C.grey}/></button></div>
-      <p className="text-[12.5px] mb-3" style={{color:C.grey}}>{patientName?`${patientName} · `:""}{v.date||v.time||"session"} — the admin will action it.</p>
+      <p className="text-[12.5px] mb-3" style={{color:C.grey}}>{patientName?`${patientName} · `:""}{v.date||to12(v.time)||"session"} — the admin will action it.</p>
       <label className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Reason <span style={{color:C.red}}>*</span></label>
       <textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} placeholder="Why does this session need to move?" className="w-full mt-1 mb-3 px-3 py-2 rounded-xl text-[14px]" style={{border:`1px solid ${C.line}`,resize:"none"}}/>
       <label className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Suggested date range <span style={{color:C.red}}>*</span></label>
@@ -2875,7 +2880,7 @@ function RescheduleActionModal({v,patientName,onResolve,onClose}){
     <div className="bg-white w-full max-w-[400px] rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
       <div className="flex items-center justify-between mb-1"><h3 className="text-[17px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>Reschedule session</h3>
         <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{background:C.bg}}><X size={16} color={C.grey}/></button></div>
-      <p className="text-[12.5px]" style={{color:C.grey}}>{patientName||"Patient"} · currently {v.date||"undated"}{v.time?` ${v.time}`:""}</p>
+      <p className="text-[12.5px]" style={{color:C.grey}}>{patientName||"Patient"} · currently {v.date||"undated"}{v.time?` ${to12(v.time)}`:""}</p>
       <div className="rounded-xl p-2.5 my-3" style={{background:"#F3EEF8"}}>
         {v.rescheduleNote&&<div className="text-[12px]" style={{color:"#7C5BA0"}}><b>Reason:</b> {v.rescheduleNote}</div>}
         {(v.reschedulePrefFrom||v.reschedulePrefTo)&&<div className="text-[12px] mt-0.5" style={{color:"#7C5BA0"}}><b>Doctor prefers:</b> {fmt(v.reschedulePrefFrom)} → {fmt(v.reschedulePrefTo)}</div>}
@@ -2885,7 +2890,7 @@ function RescheduleActionModal({v,patientName,onResolve,onClose}){
       <div className="mt-1.5"><MiniCalendar value={date} onPick={setDate} min={today} rangeFrom={v.reschedulePrefFrom} rangeTo={v.reschedulePrefTo}/></div>
       <label className="text-[11px] font-bold uppercase mt-3 block" style={{color:C.grey}}>New time</label>
       <input type="time" step="900" value={time} onChange={e=>setTime(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl text-[14px] bg-white" style={{border:`1px solid ${C.line}`}}/>
-      <div className="text-[12px] mt-2 px-1" style={{color:C.ink2}}>Move to <b>{fmt(date)}</b> at <b>{time}</b></div>
+      <div className="text-[12px] mt-2 px-1" style={{color:C.ink2}}>Move to <b>{fmt(date)}</b> at <b>{to12(time)}</b></div>
       <button disabled={busy} onClick={()=>run(date,time)} className="w-full mt-3 py-2.5 rounded-xl font-bold text-[14px] disabled:opacity-40" style={{background:C.ink,color:"#fff"}}>{busy?"Saving…":"Confirm reschedule"}</button>
       <button disabled={busy} onClick={()=>run(null,null)} className="w-full mt-2 py-2 rounded-xl font-semibold text-[13px]" style={{background:C.bg,color:C.ink2,border:`1px solid ${C.line}`}}>Just clear the request (keep date)</button>
     </div>
@@ -2930,7 +2935,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
       {tab==="visits"&&<div className="p-4">{mine.length===0&&myPackages.length===0&&<p className="text-[13px] text-center mt-6" style={{color:C.grey}}>No upcoming visits — tap “Log a session” to log one independently.</p>}
         {mine.map(v=>{const p=pOf(v.patientId);return(<div key={v.id} className="bg-white rounded-2xl p-4 mb-3" style={{border:`1px solid ${C.line}`}}>
           <button onClick={()=>setActive({visit:v,patient:p})} className="w-full text-left">
-          <div className="flex items-center gap-2"><Clock size={14} color={C.teal}/><span className="font-bold">{v.date||v.time}</span><span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:v.type==="Assessment"?C.teal+"33":"#F0F0EE",color:C.ink2}}>{v.type}</span></div>
+          <div className="flex items-center gap-2"><Clock size={14} color={C.teal}/><span className="font-bold">{v.date||to12(v.time)}</span><span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:v.type==="Assessment"?C.teal+"33":"#F0F0EE",color:C.ink2}}>{v.type}</span></div>
           <div className="text-[17px] font-bold mt-1.5" style={{fontFamily:HEAD,color:C.ink}}>{p?.name}</div>
           <div className="text-[13px] flex items-center gap-1.5 mt-0.5" style={{color:C.grey}}><MapPin size={13}/>{p?.zone} · {p?.dx?.label||"no dx yet"}</div></button>
           {reschedFooter(v)}</div>);})}
