@@ -451,16 +451,16 @@ export function useDataStore({ role, me }) {
     const d = doctors.find((x) => x.id === id)
     setDoctors((ds) => ds.map((x) => x.id === id ? { ...x, slots } : x))
     await supabase.from('doctors').update({ slots }).eq('id', id)
-    if (actor === 'doctor') notify('admin', `${d?.name || 'A doctor'} updated their availability (${slots.length} slots/wk)`)
-    else notify('doctor', `Admin updated your availability (${slots.length} slots/wk)`, d?.name)
+    if (actor === 'doctor') notify('admin', `${d?.name || 'A doctor'} updated their availability (${slots.length} slots/wk)`, null, { view: 'doctors', doctorId: id })
+    else notify('doctor', `Admin updated your availability (${slots.length} slots/wk)`, d?.name, { view: 'avail' })
   }, [doctors, notify])
 
   const updateDoctorZones = useCallback(async (id, zones, actor = 'admin') => {
     const d = doctors.find((x) => x.id === id)
     setDoctors((ds) => ds.map((x) => x.id === id ? { ...x, zones } : x))
     await supabase.from('doctors').update({ zones }).eq('id', id)
-    if (actor === 'doctor') notify('admin', `${d?.name || 'A doctor'} updated their coverage zones (${zones.length})`)
-    else notify('doctor', `Admin updated your coverage zones (${zones.length})`, d?.name)
+    if (actor === 'doctor') notify('admin', `${d?.name || 'A doctor'} updated their coverage zones (${zones.length})`, null, { view: 'doctors', doctorId: id })
+    else notify('doctor', `Admin updated your coverage zones (${zones.length})`, d?.name, { view: 'avail' })
   }, [doctors, notify])
 
   // patch is camelCase from the UI; map the multi-word keys to snake_case columns.
