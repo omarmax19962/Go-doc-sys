@@ -1820,11 +1820,11 @@ function GrowthCAC({finances,expenses,addExpense,updateExpense,removeExpense,gro
   const[mode,setMode]=useState("auto");
   return(<div>
     <div className="flex gap-1 p-1 mb-4 rounded-xl w-fit" style={{background:"#fff",border:`1px solid ${C.line}`}}>
-      {[["auto","Automatic"],["manual","Manual"]].map(([k,l])=>(<button key={k} onClick={()=>setMode(k)} className="px-4 py-1.5 rounded-lg text-[13px] font-semibold" style={{background:mode===k?C.teal:"transparent",color:mode===k?C.ink:C.ink2}}>{l}</button>))}
+      {[["auto","Automatic"],["manual","Manual ledger"],["calc","Calculator"]].map(([k,l])=>(<button key={k} onClick={()=>setMode(k)} className="px-4 py-1.5 rounded-lg text-[13px] font-semibold" style={{background:mode===k?C.teal:"transparent",color:mode===k?C.ink:C.ink2}}>{l}</button>))}
     </div>
-    {mode==="auto"
-      ?<GrowthAuto finances={finances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} patients={patients}/>
-      :<GrowthManual growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth}/>}
+    {mode==="auto"&&<GrowthAuto finances={finances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} patients={patients}/>}
+    {mode==="manual"&&<GrowthManual growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth}/>}
+    {mode==="calc"&&<GrowthCalculator/>}
   </div>);
 }
 
@@ -2008,6 +2008,98 @@ function GrowthManual({growthMonths,addGrowthMonth,updateGrowthMonth,removeGrowt
       </div>}
     </div>
     <p className="text-[11px] mt-3 flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Fully manual — every number is what you type. CAC = marketing ÷ new patients. Net income = money in − money out. Click any cell to edit; changes save when you tab out.</p>
+  </div>);
+}
+
+/* ---------- manual CAC & growth calculator — live, nothing saved ---------- */
+function GrowthCalculator(){
+  const[f,setF]=useState({marketing:"",otherCost:"",newPatients:"",revPerSession:"",sessionsPerPatient:"",marginPct:"40",retentionMo:"",startPatients:"",growthPct:"",months:"6"});
+  const set=k=>e=>setF(s=>({...s,[k]:e.target.value}));
+  const N=v=>{const n=Number(v);return isFinite(n)?n:0;};
+  const m=useMemo(()=>{
+    const marketing=N(f.marketing),other=N(f.otherCost),pts=N(f.newPatients),rps=N(f.revPerSession),spp=N(f.sessionsPerPatient),margin=N(f.marginPct)/100;
+    const acq=marketing+other;
+    const cac=pts?acq/pts:0;
+    const ltvRev=rps*spp;                 // gross lifetime revenue per patient
+    const ltvMargin=ltvRev*margin;        // contribution per patient
+    const ratio=cac?ltvMargin/cac:0;      // LTV:CAC (on margin)
+    const marginPerSession=rps*margin;
+    const paybackSessions=marginPerSession?cac/marginPerSession:0;
+    const totalRev=ltvRev*pts;
+    const totalMargin=ltvMargin*pts;
+    const netAfterAcq=totalMargin-acq;
+    const roas=marketing?totalRev/marketing:0;
+    return{acq,cac,ltvRev,ltvMargin,ratio,paybackSessions,totalRev,totalMargin,netAfterAcq,roas,pts};
+  },[f]);
+  const proj=useMemo(()=>{
+    const start=N(f.startPatients),g=N(f.growthPct)/100,mo=Math.max(0,Math.min(36,Math.round(N(f.months))));
+    const arr=[];let cur=start;
+    for(let i=1;i<=mo;i++){cur=cur*(1+g);arr.push({mo:i,pts:cur});}
+    return{start,g,mo,arr,end:mo?arr[arr.length-1].pts:start};
+  },[f]);
+
+  const ratioColor=m.ratio>=3?C.green:m.ratio>=1?C.amber:C.red;
+  const cards=[
+    ["Acquisition cost",egp(m.acq),C.ink,"marketing + other"],
+    ["CAC",m.pts?egp(m.cac):"—",C.amber,"cost ÷ new patients"],
+    ["LTV (revenue)",egp(m.ltvRev),"#2E6E73","rev/session × sessions"],
+    ["LTV (margin)",egp(m.ltvMargin),"#2E6E73","× margin %"],
+    ["LTV : CAC",m.cac?`${m.ratio.toFixed(1)}×`:"—",ratioColor,"≥3× is healthy"],
+    ["Payback",m.paybackSessions?`${Math.ceil(m.paybackSessions)} sess.`:"—",C.ink,"sessions to recover CAC"],
+    ["Net after acquisition",egp(m.netAfterAcq),m.netAfterAcq>=0?C.green:C.red,"total margin − spend"],
+    ["ROAS",N(f.marketing)?`${m.roas.toFixed(1)}×`:"—",C.ink,"revenue ÷ marketing"],
+  ];
+  const fld=(label,key,ph,suffix)=>(<Field label={label}><div className="flex items-center gap-1.5">
+    <input type="number" min="0" value={f[key]} onChange={set(key)} placeholder={ph} className={inp} style={{border:`1px solid ${C.line}`}}/>
+    {suffix&&<span className="text-[11px] shrink-0" style={{color:C.grey}}>{suffix}</span>}</div></Field>);
+
+  return(<div>
+    {/* inputs */}
+    <div className="bg-white rounded-2xl p-5 mb-4" style={{border:`1px solid ${C.line}`}}>
+      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:"Georgia,serif"}}><Wallet size={15} color={C.ink}/>CAC &amp; unit economics</h3>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {fld("Marketing / ad spend","marketing","0","EGP")}
+        {fld("Other acquisition cost","otherCost","0","EGP")}
+        {fld("New patients acquired","newPatients","0")}
+        {fld("Revenue per session","revPerSession","0","EGP")}
+        {fld("Sessions per patient (lifetime)","sessionsPerPatient","0")}
+        {fld("Go Doc margin","marginPct","40","%")}
+      </div>
+    </div>
+
+    {/* outputs */}
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">{cards.map(([l,v,c,h])=>(
+      <div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
+        <div className="text-[12px]" style={{color:C.grey}}>{l}</div>
+        <div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div>
+        <div className="text-[10px] mt-0.5" style={{color:C.grey}}>{h}</div>
+      </div>))}</div>
+
+    {/* growth projection */}
+    <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
+      <h3 className="text-[14px] font-bold mb-3 flex items-center gap-1.5" style={{fontFamily:"Georgia,serif"}}><TrendingDown size={15} color={C.green} style={{transform:"scaleY(-1)"}}/>Growth projection</h3>
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {fld("Starting patients / mo","startPatients","0")}
+        {fld("Monthly growth","growthPct","0","%")}
+        {fld("Months to project","months","6")}
+      </div>
+      {proj.mo>0&&<>
+        <div className="flex flex-wrap gap-3 mb-3">
+          <div className="bg-white rounded-xl px-4 py-2.5" style={{border:`1px solid ${C.line}`}}><div className="text-[11px]" style={{color:C.grey}}>After {proj.mo} mo</div><div className="text-[18px] font-bold" style={{color:"#2E6E73"}}>{Math.round(proj.end)} / mo</div></div>
+          <div className="bg-white rounded-xl px-4 py-2.5" style={{border:`1px solid ${C.line}`}}><div className="text-[11px]" style={{color:C.grey}}>Total over period</div><div className="text-[18px] font-bold" style={{color:C.ink}}>{Math.round(proj.arr.reduce((a,r)=>a+r.pts,0))}</div></div>
+          {m.cac>0&&<div className="bg-white rounded-xl px-4 py-2.5" style={{border:`1px solid ${C.line}`}}><div className="text-[11px]" style={{color:C.grey}}>Spend to acquire them</div><div className="text-[18px] font-bold" style={{color:C.amber}}>{egp(proj.arr.reduce((a,r)=>a+r.pts,0)*m.cac)}</div></div>}
+        </div>
+        <div className="flex items-end gap-1.5 h-28">
+          {proj.arr.map(r=>{const max=proj.end||1;const h=Math.max(4,(r.pts/max)*100);return(
+            <div key={r.mo} className="flex-1 flex flex-col items-center justify-end gap-1">
+              <span className="text-[10px] tabular-nums font-semibold" style={{color:C.ink2}}>{Math.round(r.pts)}</span>
+              <div className="w-full rounded-t" style={{height:`${h}%`,background:C.teal}}/>
+              <span className="text-[10px]" style={{color:C.grey}}>M{r.mo}</span>
+            </div>);})}
+        </div>
+      </>}
+    </div>
+    <p className="text-[11px] mt-3 flex items-center gap-1.5" style={{color:C.grey}}><Wallet size={11}/>Live what-if calculator — nothing is saved. LTV(margin) = revenue/session × sessions × margin. LTV:CAC ≥ 3× is healthy. Projection compounds the monthly growth rate.</p>
   </div>);
 }
 
