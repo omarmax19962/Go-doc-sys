@@ -797,6 +797,7 @@ const hm=mins=>`${pad2(Math.floor(mins/60))}:${pad2(mins%60)}`;
 const startOfWeekMon=d=>{const x=new Date(d);const off=(x.getDay()+6)%7;x.setDate(x.getDate()-off);x.setHours(0,0,0,0);return x;};
 const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x;};
 const sameYMD=(a,b)=>ymd(a)===ymd(b);
+const parseYMD=s=>{const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s||"").trim());if(!m)return null;const d=new Date(+m[1],+m[2]-1,+m[3]);d.setHours(0,0,0,0);return d;};
 const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 // Stable per-doctor color so admin multi-doctor week reads like Google Calendar.
@@ -1369,6 +1370,42 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
 /* ---------- TimeGrid — shared Google-Calendar-style day/week/month grid ---------- */
 // events: [{id, date:'YYYY-MM-DD', start:minutes|null, durationMin, title, subtitle,
 //           color, faded, raw}]. onSlotClick(dateStr,'HH:MM'); onEventClick(ev).
+// Compact month-grid date picker. Click a day to pick it. Optionally shades a
+// preferred [rangeFrom..rangeTo] window and disables days before `min`.
+function MiniCalendar({value,onPick,min,rangeFrom,rangeTo}){
+  const initial=value||rangeFrom||min||ymd(new Date());
+  const[anchor,setAnchor]=useState(()=>{const d=parseYMD(initial)||new Date();d.setDate(1);d.setHours(0,0,0,0);return d;});
+  const today=new Date();today.setHours(0,0,0,0);
+  const minD=min?parseYMD(min):null;
+  const fromD=rangeFrom?parseYMD(rangeFrom):null;
+  const toD=rangeTo?parseYMD(rangeTo):null;
+  const first=new Date(anchor.getFullYear(),anchor.getMonth(),1);
+  const gridStart=startOfWeekMon(first);
+  const cells=Array.from({length:42},(_,i)=>addDays(gridStart,i));
+  const step=dir=>{const d=new Date(anchor);d.setMonth(d.getMonth()+dir);setAnchor(d);};
+  const inRange=d=>fromD&&toD&&d>=fromD&&d<=toD;
+  return(<div className="rounded-xl p-2" style={{background:"#fff",border:`1px solid ${C.line}`}}>
+    <div className="flex items-center justify-between px-1 mb-1.5">
+      <button type="button" onClick={()=>step(-1)} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{background:C.bg}}><ChevronLeft size={15} color={C.ink}/></button>
+      <span className="text-[13px] font-bold" style={{color:C.ink}}>{MONTHS[anchor.getMonth()]} {anchor.getFullYear()}</span>
+      <button type="button" onClick={()=>step(1)} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{background:C.bg}}><ChevronRight size={15} color={C.ink}/></button>
+    </div>
+    <div className="grid grid-cols-7">{DOW.map(d=><div key={d} className="text-[10px] font-bold text-center pb-1" style={{color:C.grey}}>{d[0]}</div>)}</div>
+    <div className="grid grid-cols-7 gap-0.5">{cells.map((d,i)=>{
+      const inMonth=d.getMonth()===anchor.getMonth();
+      const disabled=minD&&d<minD;
+      const selected=value&&sameYMD(d,parseYMD(value));
+      const isToday=sameYMD(d,today);
+      const ranged=inRange(d);
+      return(<button key={i} type="button" disabled={disabled} onClick={()=>onPick(ymd(d))}
+        className="h-8 rounded-lg text-[12px] font-semibold flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
+        style={{background:selected?C.ink:ranged?C.teal+"33":"transparent",color:selected?"#fff":inMonth?C.ink2:C.grey,
+          border:isToday&&!selected?`1px solid ${C.teal}`:"1px solid transparent"}}>{d.getDate()}</button>);
+    })}</div>
+    {fromD&&toD&&<div className="text-[10.5px] mt-1.5 px-1 flex items-center gap-1" style={{color:"#2E6E73"}}><span className="w-2.5 h-2.5 rounded" style={{background:C.teal+"33"}}/>Doctor's preferred window</div>}
+  </div>);
+}
+
 function TimeGrid({events=[],defaultView="week",onSlotClick,onEventClick,startHour=8,endHour=21,compact=false}){
   const[view,setView]=useState(defaultView);
   const[anchor,setAnchor]=useState(()=>{const d=new Date();d.setHours(0,0,0,0);return d;});
@@ -1570,7 +1607,7 @@ function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onC
 }
 
 /* ---------- EventPopover — admin click-through actions on a session ---------- */
-function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveReschedule,rescheduleVisit}){
+function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveReschedule,rescheduleVisit,onActionReschedule}){
   const v=ev.raw;if(!v)return null;
   const[edate,setEdate]=useState(v.date||"");const[etime,setEtime]=useState(v.time&&v.time!=="—"?v.time:"");const[saved,setSaved]=useState(false);
   const dirty=(edate||"")!==(v.date||"")||(etime||"")!==((v.time&&v.time!=="—")?v.time:"");
@@ -1597,7 +1634,7 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
         {v.rescheduleRequested&&<div className="rounded-lg p-2.5" style={{background:"#F3EEF8"}}>
           <div className="text-[11px] font-bold" style={{color:"#9B7BB8"}}>Reschedule requested{v.rescheduleNote?` — "${v.rescheduleNote}"`:""}</div>
           {(v.reschedulePrefFrom||v.reschedulePrefTo)&&<div className="text-[10.5px] font-semibold mt-0.5" style={{color:"#7C5BA0"}}>Doctor prefers {v.reschedulePrefFrom||"…"} → {v.reschedulePrefTo||"…"}</div>}
-          <button onClick={()=>{const d=prompt(`New date (YYYY-MM-DD)${v.reschedulePrefFrom?` — doctor prefers ${v.reschedulePrefFrom} to ${v.reschedulePrefTo}`:""}, or blank to clear the request:`,v.reschedulePrefFrom||v.date||"");resolveReschedule(v.id,d||null);onClose();}} className="mt-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold" style={{background:C.ink,color:"#fff"}}>Action it</button></div>}
+          <button onClick={()=>{onClose();onActionReschedule&&onActionReschedule(v);}} className="mt-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold" style={{background:C.ink,color:"#fff"}}>Action it</button></div>}
       </div>
     </div>
   </div>);
@@ -1605,7 +1642,7 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
 
 function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,sendReminder,resolveReschedule,rescheduleVisit,bookSession}){
   const[fDoc,setFDoc]=useState("");const[fStatus,setFStatus]=useState("");
-  const[booking,setBooking]=useState(null);const[popover,setPopover]=useState(null);
+  const[booking,setBooking]=useState(null);const[popover,setPopover]=useState(null);const[reschedAction,setReschedAction]=useState(null);
   const todayStr=new Date().toISOString().slice(0,10);
   const dayStr=o=>{const d=new Date();d.setDate(d.getDate()+o);return d.toISOString().slice(0,10);};
 
@@ -1644,7 +1681,7 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
           <div className="flex items-center gap-2 text-[13px]"><span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{background:c+"22",color:c}}>{tag}</span>
             <span className="font-semibold">{nameOf(v.patientId)}</span><span style={{color:C.grey}}>{v.doctorName} · {v.date||"—"}{note?` · "${note}"`:""}{range?` · prefers ${range}`:""}</span></div>
           <div className="flex items-center gap-1.5">
-            {tag==="Reschedule requested"&&<button onClick={()=>{const d=prompt(`New date (YYYY-MM-DD)${range?` — doctor prefers ${range}`:""}, or leave blank to just clear the request:`,v.reschedulePrefFrom||v.date||"");resolveReschedule(v.id,d||null);}} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.ink,color:"#fff"}}>Action</button>}
+            {tag==="Reschedule requested"&&<button onClick={()=>setReschedAction(v)} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.ink,color:"#fff"}}>Action</button>}
             {tag==="Unconfirmed < 24h"&&<button onClick={()=>updateVisitStatus(v.id,"confirmed")} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.teal,color:C.ink}}>Confirm</button>}
             {tag==="Yesterday no-show"&&<button onClick={()=>updateVisitStatus(v.id,"scheduled")} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Rebook</button>}
           </div>
@@ -1657,7 +1694,8 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
       onEventClick={ev=>setPopover(ev)}/>
 
     {booking&&<BookingModal slot={booking} doctors={doctors} patients={patients} visits={visits} onClose={()=>setBooking(null)} onBook={onBook}/>}
-    {popover&&<EventPopover ev={popover} nameOf={nameOf} onClose={()=>setPopover(null)} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit}/>}
+    {popover&&<EventPopover ev={popover} nameOf={nameOf} onClose={()=>setPopover(null)} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit} onActionReschedule={setReschedAction}/>}
+    {reschedAction&&<RescheduleActionModal v={reschedAction} patientName={nameOf(reschedAction.patientId)} onClose={()=>setReschedAction(null)} onResolve={async(vid,date,time)=>{await resolveReschedule(vid,date,time);setReschedAction(null);}}/>}
   </div>);
 }
 
@@ -2799,24 +2837,57 @@ function RescheduleRequestModal({v,patientName,onClose,onSubmit}){
   const[to,setTo]=useState("");
   const[busy,setBusy]=useState(false);
   const reason=note.trim();
-  const rangeBad=from&&to&&to<from;
-  const valid=reason.length>0&&from&&to&&!rangeBad;
+  const valid=reason.length>0&&from&&to;
+  // Click a day to set the start; click a later day to set the end. Clicking
+  // again (once a range exists) starts a fresh range.
+  const pick=(d)=>{
+    if(!from||(from&&to)){setFrom(d);setTo("");return;}
+    if(d<from){setFrom(d);return;}
+    setTo(d);
+  };
+  const fmt=s=>{const dt=parseYMD(s);return dt?`${DOW[(dt.getDay()+6)%7]} ${dt.getDate()} ${MONTHS[dt.getMonth()].slice(0,3)}`:s;};
   const submit=async()=>{if(!valid||busy)return;setBusy(true);try{await onSubmit({note:reason,prefFrom:from,prefTo:to});}finally{setBusy(false);}};
   return(<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{background:"rgba(16,24,40,0.45)"}} onClick={onClose}>
-    <div className="bg-white w-full max-w-[400px] rounded-t-3xl sm:rounded-3xl p-5" onClick={e=>e.stopPropagation()}>
+    <div className="bg-white w-full max-w-[400px] rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
       <div className="flex items-center justify-between mb-1"><h3 className="text-[17px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>Request reschedule</h3>
         <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{background:C.bg}}><X size={16} color={C.grey}/></button></div>
       <p className="text-[12.5px] mb-3" style={{color:C.grey}}>{patientName?`${patientName} · `:""}{v.date||v.time||"session"} — the admin will action it.</p>
       <label className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Reason <span style={{color:C.red}}>*</span></label>
       <textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} placeholder="Why does this session need to move?" className="w-full mt-1 mb-3 px-3 py-2 rounded-xl text-[14px]" style={{border:`1px solid ${C.line}`,resize:"none"}}/>
       <label className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Suggested date range <span style={{color:C.red}}>*</span></label>
-      <div className="flex items-center gap-2 mt-1">
-        <input type="date" min={today} value={from} onChange={e=>{setFrom(e.target.value);if(to&&e.target.value&&to<e.target.value)setTo(e.target.value);}} className="flex-1 px-2.5 py-2 rounded-xl text-[13px] bg-white" style={{border:`1px solid ${C.line}`}}/>
-        <span className="text-[12px]" style={{color:C.grey}}>to</span>
-        <input type="date" min={from||today} value={to} onChange={e=>setTo(e.target.value)} className="flex-1 px-2.5 py-2 rounded-xl text-[13px] bg-white" style={{border:`1px solid ${C.line}`}}/>
-      </div>
-      {rangeBad&&<p className="text-[11.5px] mt-1.5" style={{color:C.red}}>End date can’t be before the start date.</p>}
+      <div className="text-[11.5px] mb-1.5" style={{color:C.grey}}>{from?(to?<span style={{color:C.ink2}}>{fmt(from)} → {fmt(to)}</span>:<span>Now pick the end day (or tap the same day for a single day)</span>):"Tap a day to start the window"}</div>
+      <MiniCalendar value={to||from} onPick={pick} min={today} rangeFrom={from} rangeTo={to||from}/>
       <button disabled={!valid||busy} onClick={submit} className="w-full mt-4 py-2.5 rounded-xl font-bold text-[14px] disabled:opacity-40" style={{background:C.ink,color:"#fff"}}>{busy?"Sending…":"Send request"}</button>
+    </div>
+  </div>);
+}
+
+// Admin actions a reschedule request: shows the doctor's reason + preferred
+// window, then picks the new date (on a calendar) and time, or just clears it.
+function RescheduleActionModal({v,patientName,onResolve,onClose}){
+  const today=ymd(new Date());
+  const[date,setDate]=useState(v.reschedulePrefFrom||v.date||today);
+  const[time,setTime]=useState(v.time&&/^\d{1,2}:\d{2}$/.test(v.time)?v.time:"09:00");
+  const[busy,setBusy]=useState(false);
+  const fmt=s=>{const dt=parseYMD(s);return dt?`${dt.getDate()} ${MONTHS[dt.getMonth()].slice(0,3)} ${dt.getFullYear()}`:s;};
+  const run=async(d,t)=>{if(busy)return;setBusy(true);try{await onResolve(v.id,d,t);}finally{setBusy(false);}};
+  return(<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center" style={{background:"rgba(16,24,40,0.5)"}} onClick={onClose}>
+    <div className="bg-white w-full max-w-[400px] rounded-t-3xl sm:rounded-3xl p-5 max-h-[92vh] overflow-y-auto" onClick={e=>e.stopPropagation()}>
+      <div className="flex items-center justify-between mb-1"><h3 className="text-[17px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>Reschedule session</h3>
+        <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{background:C.bg}}><X size={16} color={C.grey}/></button></div>
+      <p className="text-[12.5px]" style={{color:C.grey}}>{patientName||"Patient"} · currently {v.date||"undated"}{v.time?` ${v.time}`:""}</p>
+      <div className="rounded-xl p-2.5 my-3" style={{background:"#F3EEF8"}}>
+        {v.rescheduleNote&&<div className="text-[12px]" style={{color:"#7C5BA0"}}><b>Reason:</b> {v.rescheduleNote}</div>}
+        {(v.reschedulePrefFrom||v.reschedulePrefTo)&&<div className="text-[12px] mt-0.5" style={{color:"#7C5BA0"}}><b>Doctor prefers:</b> {fmt(v.reschedulePrefFrom)} → {fmt(v.reschedulePrefTo)}</div>}
+        {!v.rescheduleNote&&!v.reschedulePrefFrom&&<div className="text-[12px]" style={{color:"#7C5BA0"}}>No details were provided.</div>}
+      </div>
+      <label className="text-[11px] font-bold uppercase" style={{color:C.grey}}>New date</label>
+      <div className="mt-1.5"><MiniCalendar value={date} onPick={setDate} min={today} rangeFrom={v.reschedulePrefFrom} rangeTo={v.reschedulePrefTo}/></div>
+      <label className="text-[11px] font-bold uppercase mt-3 block" style={{color:C.grey}}>New time</label>
+      <input type="time" step="900" value={time} onChange={e=>setTime(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-xl text-[14px] bg-white" style={{border:`1px solid ${C.line}`}}/>
+      <div className="text-[12px] mt-2 px-1" style={{color:C.ink2}}>Move to <b>{fmt(date)}</b> at <b>{time}</b></div>
+      <button disabled={busy} onClick={()=>run(date,time)} className="w-full mt-3 py-2.5 rounded-xl font-bold text-[14px] disabled:opacity-40" style={{background:C.ink,color:"#fff"}}>{busy?"Saving…":"Confirm reschedule"}</button>
+      <button disabled={busy} onClick={()=>run(null,null)} className="w-full mt-2 py-2 rounded-xl font-semibold text-[13px]" style={{background:C.bg,color:C.ink2,border:`1px solid ${C.line}`}}>Just clear the request (keep date)</button>
     </div>
   </div>);
 }

@@ -739,11 +739,18 @@ export function useDataStore({ role, me }) {
     notify('admin', `${by || 'Doctor'} requested reschedule for ${pt?.name || 'a session'}${note ? ` — ${note}` : ''}${range}`, null, { view: 'calendar' })
   }, [visits, patients, notify])
 
-  // Admin actions a reschedule: clears the request flag and range (optionally moving the date).
-  const resolveReschedule = useCallback(async (vid, newDate) => {
+  // Admin actions a reschedule: clears the request flag + range and (optionally)
+  // moves the session to a new date/time, re-activating it as 'scheduled' so it
+  // stays visible on the calendar at its new slot.
+  const resolveReschedule = useCallback(async (vid, newDate, newTime) => {
     const patch = { reschedule_requested: false, reschedule_note: null, reschedule_pref_from: null, reschedule_pref_to: null }
-    if (newDate) { patch.date = newDate; patch.status = 'rescheduled' }
-    setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, rescheduleRequested: false, rescheduleNote: null, reschedulePrefFrom: null, reschedulePrefTo: null, ...(newDate ? { date: newDate, status: 'rescheduled' } : {}) } : x))
+    const moved = !!newDate
+    if (moved) { patch.date = newDate; patch.status = 'scheduled' }
+    if (newTime) patch.time = newTime
+    setVisits((vs) => vs.map((x) => x.id === vid ? {
+      ...x, rescheduleRequested: false, rescheduleNote: null, reschedulePrefFrom: null, reschedulePrefTo: null,
+      ...(moved ? { date: newDate, status: 'scheduled' } : {}), ...(newTime ? { time: newTime } : {}),
+    } : x))
     await supabase.from('visits').update(patch).eq('id', vid)
   }, [])
 
