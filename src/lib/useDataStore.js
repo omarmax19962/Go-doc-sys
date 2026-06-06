@@ -42,22 +42,36 @@ export function useDataStore({ role, me }) {
   useEffect(() => { meRef.current = me }, [me])
 
   // ---- INITIAL LOAD ----
+  // When a doctor signs in we only pull *their* rows (patients/visits/notes/
+  // finances/packages/notifications scoped by name) instead of the whole
+  // clinic dataset — a profile loads fast and stays small. Admin loads all.
+  const isDoctor = role === 'doctor'
   const loadAll = useCallback(async () => {
     setLoading(true); setError(null)
     try {
+      // Per-doctor scoping helper: filter `table` by `col === me` for doctors.
+      const scoped = (table, col, order = 'id') => {
+        let q = supabase.from(table).select('*')
+        if (isDoctor && col && me) q = q.eq(col, me)
+        return q.order(order)
+      }
+      const notifQ = isDoctor
+        ? supabase.from('notifications').select('*').eq('target', 'doctor').eq('to', me).order('ts', { ascending: false }).limit(50)
+        : supabase.from('notifications').select('*').order('ts', { ascending: false }).limit(50)
       const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm] = await Promise.all([
-        supabase.from('doctors').select('*').order('id'),
-        supabase.from('patients').select('*').order('id'),
-        supabase.from('visits').select('*').order('id'),
-        supabase.from('notes').select('*').order('id'),
+        supabase.from('doctors').select('*').order('id'), // small table, needed for name/colour lookups
+        scoped('patients', 'doctor'),
+        scoped('visits', 'doctor_name'),
+        scoped('notes', 'doctor_name'),
         supabase.from('exercises').select('*').order('id'),
         supabase.from('modalities').select('*').order('id'),
-        supabase.from('finances').select('*').order('id'),
+        scoped('finances', 'doctor'),
         supabase.from('config').select('*').eq('id', 1).maybeSingle(),
-        supabase.from('notifications').select('*').order('ts', { ascending: false }).limit(50),
-        supabase.from('packages').select('*').order('id'),
-        supabase.from('expenses').select('*').order('id'),
-        supabase.from('growth_months').select('*').order('month'),
+        notifQ,
+        scoped('packages', 'doctor_name'),
+        // expenses + growth are admin-only finance ledgers — skip for doctors
+        isDoctor ? Promise.resolve({ data: [] }) : supabase.from('expenses').select('*').order('id'),
+        isDoctor ? Promise.resolve({ data: [] }) : supabase.from('growth_months').select('*').order('month'),
       ])
       if (d.error) throw d.error
       setDoctors((d.data || []).map(fromDoctor))
@@ -78,35 +92,39 @@ export function useDataStore({ role, me }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isDoctor, me])
 
   useEffect(() => { loadAll() }, [loadAll])
 
   // ---- REALTIME SUBSCRIPTIONS ----
+  // Refetches reuse the same per-doctor scoping as the initial load so a
+  // doctor's local cache never balloons to the whole clinic on a live change.
   useEffect(() => {
+    const reNotes = () => { let q = supabase.from('notes').select('*'); if (isDoctor && me) q = q.eq('doctor_name', me); q.order('id').then(({ data }) => setNotes((data || []).map(fromNote))) }
+    const reVisits = () => { let q = supabase.from('visits').select('*'); if (isDoctor && me) q = q.eq('doctor_name', me); q.order('id').then(({ data }) => setVisits((data || []).map(fromVisit))) }
+    const rePackages = () => { let q = supabase.from('packages').select('*'); if (isDoctor && me) q = q.eq('doctor_name', me); q.order('id').then(({ data }) => setPackages((data || []).map(fromPackage))) }
     const ch = supabase
       .channel('godoc-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notes' }, () => {
-        supabase.from('notes').select('*').order('id').then(({ data }) => setNotes((data || []).map(fromNote)))
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notes' }, reNotes)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, (p) => {
-        if (p.new) setNotifs((ns) => [fromNotif(p.new), ...ns.filter((x) => x.id !== p.new.id)])
+        if (!p.new) return
+        // doctors only care about their own doctor-targeted notifications
+        if (isDoctor && !(p.new.target === 'doctor' && p.new.to === me)) return
+        setNotifs((ns) => [fromNotif(p.new), ...ns.filter((x) => x.id !== p.new.id)])
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, () => {
-        supabase.from('visits').select('*').order('id').then(({ data }) => setVisits((data || []).map(fromVisit)))
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' }, () => {
-        supabase.from('packages').select('*').order('id').then(({ data }) => setPackages((data || []).map(fromPackage)))
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, reVisits)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' }, rePackages)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
+        if (isDoctor) return
         supabase.from('expenses').select('*').order('id').then(({ data }) => setExpenses((data || []).map(fromExpense)))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'growth_months' }, () => {
+        if (isDoctor) return
         supabase.from('growth_months').select('*').order('month').then(({ data }) => setGrowthMonths((data || []).map(fromGrowth)))
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [])
+  }, [isDoctor, me])
 
   // ---- HELPERS ----
   const nowISO = () => new Date().toISOString()
