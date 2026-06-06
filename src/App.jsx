@@ -915,20 +915,35 @@ function FileAttach({files=[],onChange}){
   const inputRef=useRef(null);
   const [busy,setBusy]=useState(false);
   const [err,setErr]=useState("");
+  const [drag,setDrag]=useState(false);
   const pick=()=>inputRef.current&&inputRef.current.click();
-  const onPick=async(e)=>{
-    const file=e.target.files&&e.target.files[0];
-    e.target.value="";
-    if(!file)return;
+  const uploadOne=async(file)=>{
+    const safe=(file.name||`file_${Date.now()}`).replace(/[^\w.\-]+/g,"_");
+    const path=`${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safe}`;
+    const {error}=await supabase.storage.from("attachments").upload(path,file);
+    if(error)throw new Error(error.message||"Upload failed");
+    return {name:file.name||safe,path};
+  };
+  const ingest=async(list)=>{
+    const arr=Array.from(list||[]).filter(Boolean);
+    if(!arr.length)return;
     setErr("");setBusy(true);
+    const added=[];
     try{
-      const safe=file.name.replace(/[^\w.\-]+/g,"_");
-      const path=`${Date.now()}_${Math.random().toString(36).slice(2,7)}_${safe}`;
-      const {error}=await supabase.storage.from("attachments").upload(path,file);
-      if(error){setErr(error.message||"Upload failed");return;}
-      onChange([...(files||[]),{name:file.name,path}]);
-    }catch(e2){setErr(e2.message||"Upload failed");}
-    finally{setBusy(false);}
+      for(const file of arr){
+        try{added.push(await uploadOne(file));}
+        catch(e2){setErr(`${file.name||"File"}: ${e2.message||"Upload failed"}`);}
+      }
+      if(added.length)onChange([...(files||[]),...added]);
+    }finally{setBusy(false);}
+  };
+  const onPick=async(e)=>{const list=e.target.files;e.target.value="";await ingest(list);};
+  const onDrop=async(e)=>{e.preventDefault();setDrag(false);if(busy)return;await ingest(e.dataTransfer?.files);};
+  const onDragOver=(e)=>{e.preventDefault();if(!drag)setDrag(true);};
+  const onDragLeave=(e)=>{e.preventDefault();if(e.currentTarget===e.target)setDrag(false);};
+  const onPaste=async(e)=>{
+    const items=e.clipboardData?.files;
+    if(items&&items.length){e.preventDefault();await ingest(items);}
   };
   const open=async(f)=>{
     const p=filePath(f);if(!p)return;
@@ -937,17 +952,26 @@ function FileAttach({files=[],onChange}){
   };
   const remove=(i)=>onChange((files||[]).filter((_,idx)=>idx!==i));
   return(<div>
-    <div className="flex flex-wrap items-center gap-2">
-      {(files||[]).map((f,i)=>{const linkable=!!filePath(f);return(
-        <span key={i} className="flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg" style={{background:"#fff",border:`1px solid ${C.line}`,color:C.ink2}}>
-          <Paperclip size={12}/>
-          {linkable?<button type="button" onClick={()=>open(f)} className="underline decoration-dotted" style={{color:"#2E6E73"}}>{fileName(f)}</button>:<span>{fileName(f)}</span>}
-          <button type="button" onClick={()=>remove(i)} aria-label="Remove" style={{color:C.grey}}><X size={12}/></button>
-        </span>);})}
-      <button type="button" onClick={pick} disabled={busy} className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}>
-        {busy?<><Activity size={14} className="animate-spin"/>Uploading…</>:<><Plus size={14}/>Attach</>}
-      </button>
-      <input ref={inputRef} type="file" className="hidden" onChange={onPick} accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx"/>
+    <div
+      onDrop={onDrop} onDragOver={onDragOver} onDragEnter={onDragOver} onDragLeave={onDragLeave}
+      onPaste={onPaste} tabIndex={0} role="button" aria-label="Drop files here or click Attach"
+      onClick={(e)=>{if(e.target===e.currentTarget&&!busy)pick();}}
+      className="rounded-2xl px-3 py-3 transition-colors outline-none"
+      style={{border:`1.5px dashed ${drag?C.teal:C.line}`,background:drag?"#EAF8FA":"#FAFCFD"}}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        {(files||[]).map((f,i)=>{const linkable=!!filePath(f);return(
+          <span key={i} className="flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg" style={{background:"#fff",border:`1px solid ${C.line}`,color:C.ink2}}>
+            <Paperclip size={12}/>
+            {linkable?<button type="button" onClick={()=>open(f)} className="underline decoration-dotted" style={{color:"#2E6E73"}}>{fileName(f)}</button>:<span>{fileName(f)}</span>}
+            <button type="button" onClick={()=>remove(i)} aria-label="Remove" style={{color:C.grey}}><X size={12}/></button>
+          </span>);})}
+        <button type="button" onClick={pick} disabled={busy} className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}>
+          {busy?<><Activity size={14} className="animate-spin"/>Uploading…</>:<><Plus size={14}/>Attach</>}
+        </button>
+      </div>
+      <p className="text-[11px] mt-2 select-none" style={{color:C.grey}}>{drag?"Drop to upload…":"Drag & drop files or photos here, paste an image, or click Attach"}</p>
+      <input ref={inputRef} type="file" multiple className="hidden" onChange={onPick} accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx"/>
     </div>
     {err&&<p className="text-[11px] mt-1.5" style={{color:C.red}}>{err}</p>}
   </div>);
