@@ -328,19 +328,33 @@ export function useDataStore({ role, me }) {
     await supabase.from('visits').update(patch).eq('id', vid)
   }, [])
 
-  const submitNote = useCallback(async (n) => {
-    // Package chronological lock: cannot document a session until every
-    // earlier-dated session in the same package has its SOAP filed (§4.3).
-    const thisVisit = visits.find((v) => v.id === n.visitId)
-    if (thisVisit?.packageId && thisVisit.date) {
-      const earlierOpen = visits.some((v) =>
-        v.packageId === thisVisit.packageId && v.id !== thisVisit.id &&
-        v.date && v.date < thisVisit.date && !v.soapFiled && v.status !== 'cancelled')
-      if (earlierOpen) {
-        notify('doctor', 'Complete the earlier session in this package first', n.doctorName)
-        return
+  // Delete a session entirely (admin or doctor). Documented/completed sessions
+  // are protected. Cleans up the linked unpaid finance line and keeps the
+  // parent package's session count in sync (package billing lives admin-side).
+  const deleteVisit = useCallback(async (vid, by = 'admin') => {
+    const v = visits.find((x) => x.id === vid)
+    if (!v) return
+    if (v.soapFiled || v.status === 'completed') { notify('admin', 'Cannot delete a documented session'); return }
+    setVisits((vs) => vs.filter((x) => x.id !== vid))
+    await supabase.from('visits').delete().eq('id', vid)
+    // drop the Pending finance line tied to this visit (never touch a Paid one)
+    const fin = finances.find((f) => f.visitId === vid)
+    if (fin && fin.status !== 'Paid') {
+      setFinances((fs) => fs.filter((f) => f.visitId !== vid))
+      await supabase.from('finances').delete().eq('visit_id', vid)
+    }
+    if (v.packageId) {
+      const pack = packages.find((p) => p.id === v.packageId)
+      if (pack) {
+        await supabase.from('packages').update({ total_sessions: Math.max(0, (pack.totalSessions || 1) - 1) }).eq('id', v.packageId)
+        setPackages((ps) => ps.map((p) => p.id === v.packageId ? { ...p, totalSessions: Math.max(0, (p.totalSessions || 1) - 1) } : p))
       }
     }
+    const pname = patients.find((p) => p.id === v.patientId)?.name || '—'
+    notify('admin', `Session deleted: ${pname}${v.date ? ` (${v.date})` : ''}${by === 'doctor' ? ` — by ${v.doctorName}` : ''}`, null, { patientId: v.patientId })
+  }, [visits, finances, packages, patients, notify])
+
+  const submitNote = useCallback(async (n) => {
     const today = new Date().toISOString().slice(0, 10)
     // The doctor sets the date the session actually took place. created_at
     // (DB default now()) records when the note was really filed, so admin can
@@ -795,7 +809,7 @@ export function useDataStore({ role, me }) {
     updateFinance, settleFinances, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,
-    bookSession, rescheduleVisit,
+    bookSession, rescheduleVisit, deleteVisit,
     setExerciseLib: setExerciseLibPersisted,
     setModalityLib: setModalityLibPersisted,
     notify, markRead,
