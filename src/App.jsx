@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   LayoutGrid, Users, ClipboardCheck, Stethoscope, BookOpen, Plus, Search, X, Check,
   ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Pencil, Paperclip, Link2,
   CircleCheck, AlertTriangle, MessageSquare, CornerUpLeft, Trash2, Activity, Wallet,
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
-  Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle
+  Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle, Eye, Image as ImageIcon
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
@@ -911,6 +911,9 @@ const inp="w-full px-3 py-2.5 rounded-xl text-[15px] outline-none bg-white";
    bucket and stores {name, path}. Legacy string filenames render as plain chips. */
 const fileName=(f)=>typeof f==="string"?f:f.name;
 const filePath=(f)=>typeof f==="string"?null:f.path;
+const fileExt=(f)=>{const n=(fileName(f)||"").toLowerCase();const i=n.lastIndexOf(".");return i>=0?n.slice(i+1):"";};
+const isImageFile=(f)=>["jpg","jpeg","png","webp","gif","heic","bmp","svg"].includes(fileExt(f));
+const isPdfFile=(f)=>fileExt(f)==="pdf";
 function FileAttach({files=[],onChange}){
   const inputRef=useRef(null);
   const [busy,setBusy]=useState(false);
@@ -945,12 +948,36 @@ function FileAttach({files=[],onChange}){
     const items=e.clipboardData?.files;
     if(items&&items.length){e.preventDefault();await ingest(items);}
   };
-  const open=async(f)=>{
-    const p=filePath(f);if(!p)return;
+  const [urls,setUrls]=useState({});   // path -> signed url (for inline preview)
+  const [view,setView]=useState(null); // file currently open in the lightbox
+  useEffect(()=>{
+    let alive=true;
+    const need=(files||[]).map(filePath).filter(p=>p&&!urls[p]);
+    if(!need.length)return;
+    (async()=>{
+      const next={};
+      for(const p of need){
+        const {data,error}=await supabase.storage.from("attachments").createSignedUrl(p,3600);
+        if(!error&&data?.signedUrl)next[p]=data.signedUrl;
+      }
+      if(alive&&Object.keys(next).length)setUrls(u=>({...u,...next}));
+    })();
+    return()=>{alive=false;};
+  },[files]); // eslint-disable-line react-hooks/exhaustive-deps
+  const signedFor=async(f)=>{
+    const p=filePath(f);if(!p)return null;
+    if(urls[p])return urls[p];
     const {data,error}=await supabase.storage.from("attachments").createSignedUrl(p,3600);
-    if(!error&&data?.signedUrl)window.open(data.signedUrl,"_blank","noopener");
+    if(!error&&data?.signedUrl){setUrls(u=>({...u,[p]:data.signedUrl}));return data.signedUrl;}
+    return null;
+  };
+  const open=async(f)=>{const u=await signedFor(f);if(u)window.open(u,"_blank","noopener");};
+  const onTile=async(f)=>{
+    if(isImageFile(f)||isPdfFile(f)){await signedFor(f);setView(f);}
+    else await open(f); // docx etc → download/new tab
   };
   const remove=(i)=>onChange((files||[]).filter((_,idx)=>idx!==i));
+  const viewUrl=view?urls[filePath(view)]:null;
   return(<div>
     <div
       onDrop={onDrop} onDragOver={onDragOver} onDragEnter={onDragOver} onDragLeave={onDragLeave}
@@ -959,21 +986,53 @@ function FileAttach({files=[],onChange}){
       className="rounded-2xl px-3 py-3 transition-colors outline-none"
       style={{border:`1.5px dashed ${drag?C.teal:C.line}`,background:drag?"#EAF8FA":"#FAFCFD"}}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        {(files||[]).map((f,i)=>{const linkable=!!filePath(f);return(
-          <span key={i} className="flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg" style={{background:"#fff",border:`1px solid ${C.line}`,color:C.ink2}}>
-            <Paperclip size={12}/>
-            {linkable?<button type="button" onClick={()=>open(f)} className="underline decoration-dotted" style={{color:"#2E6E73"}}>{fileName(f)}</button>:<span>{fileName(f)}</span>}
-            <button type="button" onClick={()=>remove(i)} aria-label="Remove" style={{color:C.grey}}><X size={12}/></button>
-          </span>);})}
-        <button type="button" onClick={pick} disabled={busy} className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-lg font-semibold disabled:opacity-50" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}>
-          {busy?<><Activity size={14} className="animate-spin"/>Uploading…</>:<><Plus size={14}/>Attach</>}
+      <div className="flex flex-wrap items-start gap-2.5">
+        {(files||[]).map((f,i)=>{
+          const p=filePath(f); const url=p?urls[p]:null;
+          const img=isImageFile(f); const pdf=isPdfFile(f);
+          return(
+          <div key={i} className="relative group rounded-xl overflow-hidden" style={{width:132,background:"#fff",border:`1px solid ${C.line}`}}>
+            <button type="button" onClick={()=>onTile(f)} className="block w-full text-left">
+              <div className="flex items-center justify-center" style={{height:84,background:img?"#0d1b2a":"#F4FBFC"}}>
+                {img&&url
+                  ? <img src={url} alt={fileName(f)} className="w-full h-full object-cover"/>
+                  : img
+                    ? <ImageIcon size={26} style={{color:C.grey}}/>
+                    : pdf
+                      ? <FileText size={26} style={{color:C.red}}/>
+                      : <Paperclip size={22} style={{color:C.grey}}/>}
+                {(img||pdf)&&<span className="absolute top-1.5 left-1.5 flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md" style={{background:"rgba(255,255,255,.9)",color:C.ink2}}><Eye size={10}/>{pdf?"PDF":"View"}</span>}
+              </div>
+              <div className="px-2 py-1.5 text-[11px] truncate" style={{color:C.ink2}} title={fileName(f)}>{fileName(f)}</div>
+            </button>
+            <button type="button" onClick={(e)=>{e.stopPropagation();remove(i);}} aria-label="Remove" className="absolute top-1.5 right-1.5 rounded-full p-0.5" style={{background:"rgba(255,255,255,.92)",color:C.red,border:`1px solid ${C.line}`}}><X size={13}/></button>
+          </div>);})}
+        <button type="button" onClick={pick} disabled={busy} className="flex flex-col items-center justify-center gap-1 text-[12px] font-semibold rounded-xl disabled:opacity-50" style={{width:132,height:118,background:"#F4FBFC",color:C.ink,border:`1.5px dashed ${C.tealSoft}`}}>
+          {busy?<><Activity size={18} className="animate-spin"/>Uploading…</>:<><Plus size={18}/>Attach</>}
         </button>
       </div>
       <p className="text-[11px] mt-2 select-none" style={{color:C.grey}}>{drag?"Drop to upload…":"Drag & drop files or photos here, paste an image, or click Attach"}</p>
       <input ref={inputRef} type="file" multiple className="hidden" onChange={onPick} accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx"/>
     </div>
     {err&&<p className="text-[11px] mt-1.5" style={{color:C.red}}>{err}</p>}
+    {view&&(
+      <div className="fixed inset-0 z-[120] flex flex-col" style={{background:"rgba(15,23,32,.86)"}} onClick={()=>setView(null)}>
+        <div className="flex items-center justify-between px-4 py-3 shrink-0" onClick={(e)=>e.stopPropagation()}>
+          <span className="text-[13px] font-semibold truncate pr-3" style={{color:"#fff"}}>{fileName(view)}</span>
+          <div className="flex items-center gap-2">
+            {viewUrl&&<a href={viewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg" style={{background:"rgba(255,255,255,.14)",color:"#fff"}}><Download size={14}/>Open</a>}
+            <button type="button" onClick={()=>setView(null)} aria-label="Close" className="flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-lg" style={{background:"rgba(255,255,255,.14)",color:"#fff"}}><X size={14}/>Close</button>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 px-4 pb-4 flex items-center justify-center" onClick={(e)=>e.stopPropagation()}>
+          {!viewUrl
+            ? <div className="flex items-center gap-2 text-[13px]" style={{color:"#fff"}}><Activity size={16} className="animate-spin"/>Loading…</div>
+            : isPdfFile(view)
+              ? <iframe src={viewUrl} title={fileName(view)} className="w-full h-full rounded-xl" style={{background:"#fff",border:"none"}}/>
+              : <img src={viewUrl} alt={fileName(view)} className="max-w-full max-h-full object-contain rounded-xl"/>}
+        </div>
+      </div>
+    )}
   </div>);
 }
 
