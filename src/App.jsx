@@ -678,6 +678,20 @@ const ZONES = [
   "Shubra El Kheima","Banha","Qalyub","Khanka","Obour (Qalyubia)",
   "Other / outside Greater Cairo",
 ];
+// Arabic names for every zone so the coverage-zone pickers can be searched in
+// either language. Keys must match the English ZONES values exactly.
+const ZONE_AR = {
+  "Downtown (Wast El Balad)":"وسط البلد","Garden City":"جاردن سيتي","Zamalek":"الزمالك","Maadi":"المعادي","Old Maadi":"المعادي القديمة","New Maadi":"المعادي الجديدة","Degla":"دجلة","Manial":"المنيل","Sayeda Zeinab":"السيدة زينب","Abdeen":"عابدين",
+  "Nasr City":"مدينة نصر","Heliopolis (Masr El Gedida)":"مصر الجديدة / هليوبوليس","Roxy":"روكسي","Korba":"الكوربة","Sheraton":"شيراتون","Almaza":"الماظة","Ain Shams":"عين شمس","El Marg":"المرج","Matareya":"المطرية","Hadayek El Kobba":"حدائق القبة",
+  "Abbassia":"العباسية","Ghamra":"غمرة","Shubra":"شبرا","Rod El Farag":"روض الفرج","Helwan":"حلوان","El Maasara":"المعصرة","Tora":"طرة","Mokattam":"المقطم","Manshiyat Naser":"منشية ناصر","Zawya El Hamra":"الزاوية الحمراء",
+  "New Cairo (Tagamoa)":"القاهرة الجديدة / التجمع","1st Settlement":"التجمع الأول","3rd Settlement":"التجمع الثالث","5th Settlement":"التجمع الخامس","Rehab":"الرحاب","Madinaty":"مدينتي","Shorouk":"الشروق","Obour":"العبور","Badr City":"مدينة بدر","Future City":"مدينة المستقبل",
+  "Dokki":"الدقي","Mohandessin":"المهندسين","Agouza":"العجوزة","Giza Square":"ميدان الجيزة","Haram (Pyramids)":"الهرم","Faisal":"فيصل","Omraneya":"العمرانية","Bein El Sarayat":"بين السرايات","Imbaba":"إمبابة","Warraq":"الوراق",
+  "Boulak El Dakrour":"بولاق الدكرور","Sheikh Zayed":"الشيخ زايد","6th October":"السادس من أكتوبر / 6 أكتوبر","Hadayek El Ahram":"حدائق الأهرام","Smart Village":"القرية الذكية","Dreamland":"دريم لاند","Beverly Hills":"بيفرلي هيلز",
+  "Shubra El Kheima":"شبرا الخيمة","Banha":"بنها","Qalyub":"قليوب","Khanka":"الخانكة","Obour (Qalyubia)":"العبور (القليوبية)",
+  "Other / outside Greater Cairo":"أخرى / خارج القاهرة الكبرى",
+};
+// True if zone `z` matches free-text `q` in English (label) or Arabic (ZONE_AR).
+const zoneMatch = (z, q) => { const s = (q||"").trim().toLowerCase(); if (!s) return true; return z.toLowerCase().includes(s) || (ZONE_AR[z]||"").toLowerCase().includes(s); };
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 // All 24 hours of the day, ordered so the clinic's operating window (9 AM →
 // midnight, a 15-hour stretch) comes first; the off-hours (12 AM–8 AM) follow.
@@ -1885,6 +1899,7 @@ function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots})
   const[adding,setAdding]=useState(false);const[editing,setEditing]=useState(null);
   const[inviteMsg,setInviteMsg]=useState("");
   const[nd,setNd]=useState({name:"",spec:"",zones:[],slots:[],email:""});
+  const[zq,setZq]=useState("");
   const caseCount=name=>patients.filter(p=>p.doctor===name).length;
   const toggleNd=k=>setNd(s=>({...s,slots:s.slots.includes(k)?s.slots.filter(x=>x!==k):[...s.slots,k]}));
   const daysOf=slots=>[...new Set((slots||[]).map(s=>s.split("-")[0]))];
@@ -1896,8 +1911,14 @@ function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots})
         <Field label="Specialty"><input value={nd.spec} onChange={e=>setNd(s=>({...s,spec:e.target.value}))} placeholder="Ortho / Neuro" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
       </div>
       <Field label="Login email (doctor signs in with this — no email sent)"><input type="email" value={nd.email} onChange={e=>setNd(s=>({...s,email:e.target.value}))} placeholder="doctor@example.com" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
-      <Field label="Coverage zones"><div className="flex flex-wrap gap-2">{ZONES.map(z=>{const on=nd.zones.includes(z);return(
-        <button key={z} onClick={()=>setNd(s=>({...s,zones:on?s.zones.filter(x=>x!==z):[...s.zones,z]}))} className="px-3 py-1.5 rounded-full text-[12px] font-semibold" style={{background:on?C.teal:"#fff",color:on?C.ink:C.ink2,border:`1px solid ${on?C.teal:C.line}`}}>{z}</button>);})}</div></Field>
+      <Field label="Coverage zones">
+        <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-white mb-2" style={{border:`1px solid ${C.line}`}}>
+          <Search size={14} color={C.grey}/><input value={zq} onChange={e=>setZq(e.target.value)} placeholder="Search zone · بحث بالعربي أو الإنجليزي" className="text-[13px] outline-none bg-transparent flex-1" style={{color:C.ink}}/>
+          {zq&&<button onClick={()=>setZq("")} type="button"><X size={14} color={C.grey}/></button>}
+        </div>
+        <div className="flex flex-wrap gap-2">{ZONES.filter(z=>zoneMatch(z,zq)).map(z=>{const on=nd.zones.includes(z);return(
+        <button key={z} onClick={()=>setNd(s=>({...s,zones:on?s.zones.filter(x=>x!==z):[...s.zones,z]}))} className="px-3 py-1.5 rounded-full text-[12px] font-semibold" style={{background:on?C.teal:"#fff",color:on?C.ink:C.ink2,border:`1px solid ${on?C.teal:C.line}`}}>{z}{ZONE_AR[z]?<span className="opacity-60"> · {ZONE_AR[z]}</span>:null}</button>);})}
+        {ZONES.filter(z=>zoneMatch(z,zq)).length===0&&<span className="text-[12px]" style={{color:C.grey}}>No zone matches “{zq}”.</span>}</div></Field>
       <Field label="Availability — tap the slots they work"><SlotGrid slots={nd.slots} onToggle={toggleNd}/></Field>
       {inviteMsg&&<div className="text-[12px] px-3 py-2 rounded-lg" style={{background:inviteMsg.startsWith("✓")?"#dcfce7":"#fee2e2",color:inviteMsg.startsWith("✓")?"#166534":"#991b1b"}}>{inviteMsg}</div>}
       <button disabled={!nd.name} onClick={async()=>{
@@ -2975,6 +2996,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
   const toggleSlot=k=>meDoc&&updateDoctorSlots(meDoc.id,mySlots.includes(k)?mySlots.filter(x=>x!==k):[...mySlots,k],"doctor");
   const myZones=meDoc?.zones||[];
   const toggleZone=z=>meDoc&&updateDoctorZones(meDoc.id,myZones.includes(z)?myZones.filter(x=>x!==z):[...myZones,z],"doctor");
+  const[zq,setZq]=useState("");
   const pOf=id=>patients.find(p=>p.id===id);
   const startSession=(p)=>{setPicker(false);setActive({visit:{id:Date.now(),patientId:p.id,doctorName:me,type:"Treatment",time:"now"},patient:p});};
   return(<div className="relative w-full max-w-[430px] min-h-screen" style={{background:C.bg}}>
@@ -3061,8 +3083,13 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
           <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
             <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{color:C.grey}}>Coverage zones</div>
             <p className="text-[12px] mb-3" style={{color:C.grey}}>Tap the zones you cover. Changes save instantly and the admin sees them live.</p>
-            <div className="flex flex-wrap gap-1.5">{ZONES.map(z=>{const on=myZones.includes(z);return(
-              <button key={z} type="button" onClick={()=>toggleZone(z)} className="text-[12px] px-2.5 py-1 rounded-lg font-semibold" style={{background:on?C.teal:"#F4FBFC",color:on?C.ink:C.ink,border:`1px solid ${on?C.teal:C.tealSoft}`}}>{z}</button>);})}</div>
+            <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg bg-white mb-2.5" style={{border:`1px solid ${C.line}`}}>
+              <Search size={14} color={C.grey}/><input value={zq} onChange={e=>setZq(e.target.value)} placeholder="Search zone · بحث بالعربي أو الإنجليزي" className="text-[13px] outline-none bg-transparent flex-1" style={{color:C.ink}}/>
+              {zq&&<button onClick={()=>setZq("")} type="button"><X size={14} color={C.grey}/></button>}
+            </div>
+            <div className="flex flex-wrap gap-1.5">{ZONES.filter(z=>zoneMatch(z,zq)).map(z=>{const on=myZones.includes(z);return(
+              <button key={z} type="button" onClick={()=>toggleZone(z)} className="text-[12px] px-2.5 py-1 rounded-lg font-semibold" style={{background:on?C.teal:"#F4FBFC",color:on?C.ink:C.ink,border:`1px solid ${on?C.teal:C.tealSoft}`}}>{z}{ZONE_AR[z]?<span className="opacity-60"> · {ZONE_AR[z]}</span>:null}</button>);})}
+              {ZONES.filter(z=>zoneMatch(z,zq)).length===0&&<span className="text-[12px]" style={{color:C.grey}}>No zone matches “{zq}”.</span>}</div>
             <div className="flex items-center justify-between mt-3 pt-3 text-[12px]" style={{borderTop:`1px solid ${C.line}`,color:C.grey}}>
               <span>{myZones.length} zone(s) covered</span>
               {myZones.length>0&&<button onClick={()=>updateDoctorZones(meDoc.id,[],"doctor")} className="font-semibold" style={{color:C.red}}>Clear all</button>}
