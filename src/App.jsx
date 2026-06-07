@@ -795,6 +795,11 @@ const statusColor={lead:C.amber,follow_up:"#E6A765",didnt_reply:"#B5A78A",booked
 /* Statuses an admin can set directly on an existing patient (booked/active/discharged
    are state machine transitions, not manual flags). */
 const MANUAL_STATUS_OPTIONS=["follow_up","didnt_reply","paused","lost","active"];
+/* Lead vs patient grouping — "leads" haven't converted to a booked/clinical
+   relationship yet; "patients" have. Used by the Leads/Patients filter toggle. */
+const LEAD_STATUSES=["lead","follow_up","didnt_reply","lost"];
+const PATIENT_STATUSES=["booked","active","paused","discharged"];
+const isLeadStatus=(s)=>LEAD_STATUSES.includes(s);
 
 /* ---- visit & note state machines ---- */
 const VISIT_TYPES=["Assessment","Treatment","Follow_up","Discharge"];
@@ -1033,6 +1038,31 @@ function FileAttach({files=[],onChange}){
         </div>
       </div>
     )}
+  </div>);
+}
+
+/* ---------- TagInput — free segmentation tags for leads/patients ---------- */
+/* Common segments offered as quick-add chips; users can also type their own. */
+const TAG_SUGGESTIONS=["post-op","sports injury","chronic pain","neuro","pediatric","geriatric","price-sensitive","high-intent","insurance","home-visit","follow-up later","referral"];
+function TagInput({tags=[],onChange,suggestions=TAG_SUGGESTIONS}){
+  const[draft,setDraft]=useState("");
+  const norm=(t)=>t.trim().replace(/\s+/g," ");
+  const add=(t)=>{const v=norm(t);if(!v)return;const exists=(tags||[]).some(x=>x.toLowerCase()===v.toLowerCase());if(!exists)onChange([...(tags||[]),v]);setDraft("");};
+  const remove=(i)=>onChange((tags||[]).filter((_,idx)=>idx!==i));
+  const open=suggestions.filter(s=>!(tags||[]).some(x=>x.toLowerCase()===s.toLowerCase()));
+  return(<div className="rounded-xl p-2.5" style={{background:"#fff",border:`1px solid ${C.line}`}}>
+    <div className="flex flex-wrap items-center gap-1.5">
+      {(tags||[]).map((t,i)=>(
+        <span key={i} className="flex items-center gap-1 text-[12px] font-semibold px-2 py-1 rounded-full" style={{background:"#EAF6F7",color:"#2E6E73"}}>
+          {t}<button type="button" onClick={()=>remove(i)} aria-label={`Remove ${t}`} style={{color:"#2E6E73"}}><X size={11}/></button>
+        </span>))}
+      <input value={draft} onChange={e=>setDraft(e.target.value)}
+        onKeyDown={e=>{if(e.key==="Enter"||e.key===","){e.preventDefault();add(draft);}else if(e.key==="Backspace"&&!draft&&(tags||[]).length){remove(tags.length-1);}}}
+        placeholder={(tags||[]).length?"Add tag…":"Add tags — type & press Enter"} className="flex-1 min-w-[120px] outline-none text-[13px] px-1 py-1"/>
+    </div>
+    {open.length>0&&<div className="flex flex-wrap gap-1.5 mt-2 pt-2" style={{borderTop:`1px solid ${C.line}`}}>
+      {open.slice(0,8).map(s=>(<button key={s} type="button" onClick={()=>add(s)} className="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full" style={{background:"#F4FBFC",color:C.ink2,border:`1px dashed ${C.tealSoft}`}}><Plus size={10}/>{s}</button>))}
+    </div>}
   </div>);
 }
 
@@ -1288,14 +1318,15 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
 
   /* ---- filters ---- */
   const[tF,setTF]=useState({doctor:"",status:"",type:"",from:"",to:""});
-  const[pF,setPF]=useState({q:"",status:"",doctor:"",zone:""});
+  const[pF,setPF]=useState({q:"",status:"",doctor:"",zone:"",kind:"all"});
   const[rF,setRF]=useState({doctor:"",type:"",red:""});
   const[hoverP,setHoverP]=useState(null);
   const[selPts,setSelPts]=useState(()=>new Set());
   const[confirmBulk,setConfirmBulk]=useState(null); // {ids, label} | null
   const togglePt=id=>setSelPts(s=>{const n=new Set(s);n.has(id)?n.delete(id):n.add(id);return n;});
   const fVisits=visits.filter(v=>(!tF.doctor||v.doctorName===tF.doctor)&&(!tF.status||v.status===tF.status)&&(!tF.type||v.type===tF.type)&&(!(tF.from||tF.to)||inRange(v.date,tF.from,tF.to)));
-  const fPatients=patients.filter(p=>(!pF.q||p.name.toLowerCase().includes(pF.q.toLowerCase()))&&(!pF.status||p.status===pF.status)&&(!pF.doctor||p.doctor===pF.doctor)&&(!pF.zone||p.zone===pF.zone));
+  const fPatients=patients.filter(p=>(!pF.q||p.name.toLowerCase().includes(pF.q.toLowerCase()))&&(!pF.status||p.status===pF.status)&&(!pF.doctor||p.doctor===pF.doctor)&&(!pF.zone||p.zone===pF.zone)&&(pF.kind==="all"||(pF.kind==="leads"?isLeadStatus(p.status):!isLeadStatus(p.status))));
+  const leadCount=patients.filter(p=>isLeadStatus(p.status)).length, patientCount=patients.length-leadCount;
   const fQueue=queue.filter(n=>(!rF.doctor||n.doctorName===rF.doctor)&&(!rF.type||n.type===rF.type)&&(!rF.red||n.redFlag));
 
   return(<div className="w-full max-w-[1040px] min-h-screen flex flex-col" style={{background:C.bg}}>
@@ -1354,7 +1385,15 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
 
       {/* PATIENTS — incl. assign-doctor + admin-only payment */}
       {tab==="patients"&&<>
-        <FilterBar onClear={()=>setPF({q:"",status:"",doctor:"",zone:""})}>
+        {/* Leads vs Patients segmented toggle */}
+        <div className="flex items-center gap-1.5 mb-3 p-1 rounded-xl bg-white w-fit" style={{border:`1px solid ${C.line}`}}>
+          {[["all","All",patients.length],["leads","Leads",leadCount],["patients","Patients",patientCount]].map(([k,lbl,n])=>{
+            const on=pF.kind===k;return(
+            <button key={k} onClick={()=>setPF(s=>({...s,kind:k}))} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[13px] font-semibold transition-colors" style={{background:on?C.ink:"transparent",color:on?"#fff":C.ink2}}>
+              {lbl}<span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{background:on?"rgba(255,255,255,.2)":C.bg,color:on?"#fff":C.grey}}>{n}</span>
+            </button>);})}
+        </div>
+        <FilterBar onClear={()=>setPF({q:"",status:"",doctor:"",zone:"",kind:"all"})}>
           <Srch value={pF.q} onChange={v=>setPF(s=>({...s,q:v}))} ph="Name…"/>
           <Sel value={pF.status} onChange={v=>setPF(s=>({...s,status:v}))} options={STATUSES} label="Status"/>
           <Sel value={pF.doctor} onChange={v=>setPF(s=>({...s,doctor:v}))} options={docNames} label="Doctor"/>
@@ -1384,8 +1423,9 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
             <div className="font-semibold flex items-center gap-1.5" style={{color:C.ink}}>{p.name}<History size={13} color={hoverP===p.id?C.teal:C.grey}/></div>
             <div className="text-[11px] flex items-center gap-2 mt-0.5" style={{color:C.grey}}><span>{p.zone}</span>
               <a href={`tel:${(p.phone||"").replace(/\s/g,"")}`} onClick={e=>e.stopPropagation()} className="flex items-center gap-1 hover:underline" style={{color:C.ink2}}><Phone size={11}/>{p.phone||"—"}</a></div></span>
-          <span className="col-span-4 text-[13px] flex items-center gap-2" style={{color:C.ink2}}>
-            {p.dx?<><span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{background:"#EAF6F7",color:"#2E6E73"}}>{p.dx.code||"free"}</span>{p.dx.label}</>:<span style={{color:C.grey}}>No dx yet</span>}</span>
+          <span className="col-span-4 text-[13px] flex flex-col gap-1" style={{color:C.ink2}}>
+            <span className="flex items-center gap-2">{p.dx?<><span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{background:"#EAF6F7",color:"#2E6E73"}}>{p.dx.code||"free"}</span>{p.dx.label}</>:<span style={{color:C.grey}}>No dx yet</span>}</span>
+            {p.tags?.length>0&&<span className="flex flex-wrap items-center gap-1">{p.tags.slice(0,4).map((t,ti)=><span key={ti} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full" style={{background:"#F1F5F6",color:C.grey}}>{t}</span>)}{p.tags.length>4&&<span className="text-[10px]" style={{color:C.grey}}>+{p.tags.length-4}</span>}</span>}</span>
           <span className="col-span-2"><span className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{background:statusColor[p.status]+"22",color:statusColor[p.status]}}>{STATUS_LABEL[p.status]||p.status}</span></span>
           <span className="col-span-2" onClick={e=>e.stopPropagation()}><select value={p.doctor==="—"?"":p.doctor} onChange={e=>assignDoctor(p.id,e.target.value)} className="text-[12px] px-2 py-1.5 rounded-lg bg-white w-full" style={{border:`1px solid ${C.line}`,color:p.doctor==="—"?C.grey:C.ink}}>
             <option value="">Assign…</option>{doctors.map(d=><option key={d.id}>{d.name}</option>)}</select></span>
@@ -2560,7 +2600,7 @@ function EditPatientForm({patient,onSave,onCancel}){
   const[f,setF]=useState({
     name:patient.name||"",age:patient.age??"",gender:patient.gender||"",phone:patient.phone||"",
     complaint:patient.complaint||"",history:patient.history||"",zone:patient.zone||"",
-    locText:patient.locText||"",locUrl:patient.locUrl||"",source:patient.source||"",dx:patient.dx||null,
+    locText:patient.locText||"",locUrl:patient.locUrl||"",source:patient.source||"",tags:patient.tags||[],dx:patient.dx||null,
   });
   const[dxOpen,setDxOpen]=useState(false);
   const set=k=>v=>setF(s=>({...s,[k]:v}));
@@ -2582,13 +2622,14 @@ function EditPatientForm({patient,onSave,onCancel}){
     </div>
     <Field label="Location (written)" optional><input value={f.locText} onChange={e=>set("locText")(e.target.value)} placeholder="Street, building, floor" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
     <Field label="Acquisition source / campaign" optional><input value={f.source} onChange={e=>set("source")(e.target.value)} placeholder="e.g. Instagram Oct, referral" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+    <Field label="Tags / segments" optional><TagInput tags={f.tags} onChange={set("tags")}/></Field>
     <div className="bg-white rounded-xl p-3" style={{border:`1px solid ${f.dx?C.teal:C.line}`}}>
       <div className="flex items-center justify-between mb-1.5"><span className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Primary diagnosis <span style={{color:C.amber}}>· optional</span></span>{f.dx&&<button onClick={()=>set("dx")(null)} className="text-[12px]" style={{color:C.grey}}>Remove</button>}</div>
       {f.dx?<button onClick={()=>setDxOpen(true)} className="flex items-center gap-2 text-[14px]"><span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{background:"#EAF6F7",color:"#2E6E73"}}>{f.dx.code||"free"}</span>{f.dx.label}</button>
         :<button onClick={()=>setDxOpen(true)} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-[13px] font-semibold" style={{background:"#F4FBFC",color:C.ink,border:`1px dashed ${C.tealSoft}`}}><Plus size={15}/>Add diagnosis</button>}</div>
     <div className="flex gap-2 pt-1">
       <button onClick={onCancel} className="flex-1 py-3 rounded-xl font-semibold" style={{background:"#fff",color:C.ink,border:`1px solid ${C.line}`}}>Cancel</button>
-      <button disabled={!valid} onClick={()=>onSave({name:f.name.trim(),age:f.age,gender:f.gender||null,phone:f.phone.trim(),complaint:f.complaint.trim(),history:f.history,zone:f.zone,locText:f.locText,locUrl:f.locUrl,source:f.source,dx:f.dx})} className="flex-1 py-3 rounded-xl font-bold text-white disabled:opacity-40" style={{background:C.ink}}>Save changes</button>
+      <button disabled={!valid} onClick={()=>onSave({name:f.name.trim(),age:f.age,gender:f.gender||null,phone:f.phone.trim(),complaint:f.complaint.trim(),history:f.history,zone:f.zone,locText:f.locText,locUrl:f.locUrl,source:f.source,tags:f.tags,dx:f.dx})} className="flex-1 py-3 rounded-xl font-bold text-white disabled:opacity-40" style={{background:C.ink}}>Save changes</button>
     </div>
     <DxSheet open={dxOpen} onClose={()=>setDxOpen(false)} onPick={v=>set("dx")(v)}/>
   </div>);
@@ -2681,7 +2722,9 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
         <div className="bg-white rounded-2xl p-5 grid grid-cols-3 gap-y-3 gap-x-4" style={{border:`1px solid ${C.line}`}}>
           <Info label="Complaint" value={patient.complaint}/><Info label="Age" value={patient.age!=null&&patient.age!==""?String(patient.age):"—"}/><Info label="Gender" value={patient.gender||"—"}/>
           <Info label="Assigned doctor" value={patient.doctor}/><Info label="Phone" value={patient.phone}/><Info label="Zone" value={patient.zone}/>
-          <Info label="Location" value={patient.locText}/><Info label="Next visit" value={upcoming[0]?(upcoming[0].date||upcoming[0].time):"none scheduled"}/>
+          <Info label="Location" value={patient.locText}/><Info label="Next visit" value={upcoming[0]?(upcoming[0].date||upcoming[0].time):"none scheduled"}/><Info label="Source" value={patient.source||"—"}/>
+          {patient.tags?.length>0&&<div className="col-span-3"><div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{color:C.grey}}>Tags / segments</div>
+            <div className="flex flex-wrap gap-1.5">{patient.tags.map((t,ti)=><span key={ti} className="text-[12px] font-semibold px-2.5 py-1 rounded-full" style={{background:"#EAF6F7",color:"#2E6E73"}}>{t}</span>)}</div></div>}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[["Sessions",sessionsTotal,C.ink],["Start pain",startPain??"–",painColor(startPain||0)],["Now",endPain??"–",painColor(endPain||0)],["Improvement",`${improvePct}%`,C.green]].map(([l,v,c])=>(
@@ -2971,7 +3014,7 @@ function SettingsTab({config,updateConfig}){
 /* ---------- Intake (full field set) ---------- */
 function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
   const[step,setStep]=useState(1);const[q,setQ]=useState("");
-  const[f,setF]=useState({name:"",age:"",gender:"",phone:"",complaint:"",history:"",files:[],zone:"",locText:"",locUrl:"",source:"",dx:null});
+  const[f,setF]=useState({name:"",age:"",gender:"",phone:"",complaint:"",history:"",files:[],zone:"",locText:"",locUrl:"",source:"",tags:[],dx:null});
   const[dxOpen,setDxOpen]=useState(false);const[mode,setMode]=useState(null);const[date,setDate]=useState("");const[doctor,setDoctor]=useState(null);
   const set=k=>v=>setF(s=>({...s,[k]:v}));
   const norm=s=>(s||"").toLowerCase().replace(/\s+/g," ").trim();
@@ -3012,6 +3055,7 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
             <Field label="Map link" optional><div className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white" style={{border:`1px solid ${C.line}`}}><Link2 size={15} color={C.grey}/><input value={f.locUrl} onChange={e=>set("locUrl")(e.target.value)} placeholder="maps.app.goo.gl/…" className="flex-1 outline-none text-[14px]"/></div></Field></div>
           <Field label="Location (written)" optional><input value={f.locText} onChange={e=>set("locText")(e.target.value)} placeholder="Street, building, floor" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
           <Field label="Acquisition source / campaign" optional><input value={f.source} onChange={e=>set("source")(e.target.value)} placeholder="e.g. Instagram Oct, referral, Google Ads" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+          <Field label="Tags / segments" optional><TagInput tags={f.tags} onChange={set("tags")}/></Field>
           <div className="bg-white rounded-xl p-3" style={{border:`1px solid ${f.dx?C.teal:C.line}`}}>
             <div className="flex items-center justify-between mb-1.5"><span className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Primary diagnosis <span style={{color:C.amber}}>· optional</span></span>{f.dx&&<button onClick={()=>set("dx")(null)} className="text-[12px]" style={{color:C.grey}}>Remove</button>}</div>
             {f.dx?<button onClick={()=>setDxOpen(true)} className="flex items-center gap-2 text-[14px]"><span className="text-[11px] font-bold px-1.5 py-0.5 rounded" style={{background:"#EAF6F7",color:"#2E6E73"}}>{f.dx.code||"free"}</span>{f.dx.label}</button>
