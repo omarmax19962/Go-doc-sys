@@ -722,13 +722,15 @@ const GODOC_SICK_LEAVE_DOCTOR = "Dr. Omar Youssef";
 const printSickLeave = (patient, opts={}) => {
   const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   const todayISO = new Date().toISOString().slice(0,10);
+  const issue = opts.issueDate || todayISO;
   const start = opts.startDate || todayISO;
   const days = Math.max(1, parseInt(opts.days,10) || 1);
   const end = opts.endDate || (()=>{const d=new Date(start+"T00:00:00"); d.setDate(d.getDate()+days-1); return d.toISOString().slice(0,10);})();
   const doctor = opts.doctor || GODOC_SICK_LEAVE_DOCTOR;
   const dx = (opts.diagnosis ?? (patient.dx ? ((patient.dx.code?patient.dx.code+" · ":"")+patient.dx.label) : "")).trim();
+  const desc = (opts.description||"").trim();
   const rest = (opts.restNote||"").trim();
-  const ref = `SL-${patient.id||"0"}-${todayISO.replace(/-/g,"")}`;
+  const ref = `SL-${patient.id||"0"}-${issue.replace(/-/g,"")}`;
   const fmt = d => { try { return new Date(d+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"long",year:"numeric"}); } catch { return d; } };
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(ref)}</title>
   <style>
@@ -761,7 +763,7 @@ const printSickLeave = (patient, opts={}) => {
     <div class="noprint" style="text-align:right;margin-bottom:16px;"><button class="btn" onclick="window.print()">Print / Save as PDF</button></div>
     <div class="head">
       <div><div class="brand">Go<span>Doc</span></div><div class="muted">Physiotherapy &amp; home care</div></div>
-      <div class="meta"><h1>Medical Certificate</h1><div><b>${esc(ref)}</b></div><div>Issued: ${esc(fmt(todayISO))}</div></div>
+      <div class="meta"><h1>Medical Certificate</h1><div><b>${esc(ref)}</b></div><div>Issued: ${esc(fmt(issue))}</div></div>
     </div>
     <div class="title">Sick Leave Certificate</div><div class="titlerule"></div>
     <div class="body">
@@ -770,20 +772,26 @@ const printSickLeave = (patient, opts={}) => {
       <b>${days} day${days>1?"s":""}</b>, from <span class="uline">${esc(fmt(start))}</span> to <span class="uline">${esc(fmt(end))}</span> inclusive.
     </div>
     ${dx?`<div class="box"><b>Reason / diagnosis</b>${esc(dx)}</div>`:""}
+    ${desc?`<div class="box"><b>Description</b>${esc(desc)}</div>`:""}
     ${rest?`<div class="box"><b>Medical advice</b>${esc(rest)}</div>`:""}
+    <div style="margin-top:38px;font-size:12px;color:#5b6675;line-height:1.9;">
+      <div>Date of issue: <b>${esc(fmt(issue))}</b></div>
+      <div>Place: <b>Cairo, Egypt</b></div>
+    </div>
     <div class="sign">
-      <div style="font-size:12px;color:#5b6675;line-height:1.9;">
-        <div>Date: <b>${esc(fmt(todayISO))}</b></div>
-        <div>Place: <b>Cairo, Egypt</b></div>
+      <div class="sigblock">
+        <div class="signame" style="font-size:30px;">Go<span style="color:#3FA796;">Doc</span></div>
+        <div class="sigrule">Go Doc Medical Center</div>
+        <div class="sigsub">Authorized signature &amp; stamp</div>
       </div>
       <div class="stamp"><div class="s1">Go<span>Doc</span></div><div class="s2">Medical</div><div class="s3">Verified</div></div>
       <div class="sigblock">
         <div class="signame">${esc(doctor.replace(/^Dr\.?\s*/i,""))}</div>
         <div class="sigrule">${esc(doctor)}</div>
-        <div class="sigsub">Go Doc — Medical Team</div>
+        <div class="sigsub">Treating physician · Go Doc Medical Team</div>
       </div>
     </div>
-    <div class="foot">This certificate is issued by Go Doc for medical purposes only · Ref ${esc(ref)} · Generated on ${esc(fmt(todayISO))}.<br>Verify authenticity with the issuing clinic.</div>
+    <div class="foot">This certificate is issued by Go Doc for medical purposes only · Ref ${esc(ref)} · Generated on ${esc(fmt(issue))}.<br>Verify authenticity with the issuing clinic.</div>
   </div>
   <script>window.onload=function(){setTimeout(function(){window.print();},350);};</script>
   </body></html>`;
@@ -2713,14 +2721,17 @@ function EditPatientForm({patient,onSave,onCancel}){
 /* ---------- SickLeaveModal — admin issues a printable sick-leave certificate ---------- */
 function SickLeaveModal({patient,onClose}){
   const today=new Date().toISOString().slice(0,10);
+  const[issue,setIssue]=useState(today);
   const[start,setStart]=useState(today);
   const[days,setDays]=useState(1);
+  const[doctor,setDoctor]=useState(GODOC_SICK_LEAVE_DOCTOR);
   const[dx,setDx]=useState(patient.dx?((patient.dx.code?patient.dx.code+" · ":"")+patient.dx.label):"");
+  const[desc,setDesc]=useState("");
   const[rest,setRest]=useState("");
   const d=Math.max(1,parseInt(days,10)||1);
   const end=(()=>{const x=new Date((start||today)+"T00:00:00");x.setDate(x.getDate()+d-1);return x.toISOString().slice(0,10);})();
   const fmt=v=>{try{return new Date(v+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}catch{return v;}};
-  const generate=()=>{printSickLeave(patient,{startDate:start,days:d,endDate:end,diagnosis:dx,restNote:rest});onClose();};
+  const generate=()=>{printSickLeave(patient,{issueDate:issue,startDate:start,days:d,endDate:end,doctor:(doctor||"").trim()||GODOC_SICK_LEAVE_DOCTOR,diagnosis:dx,description:desc,restNote:rest});onClose();};
   return(<div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={onClose}>
     <div className="w-full max-w-[460px] rounded-3xl overflow-hidden" style={{background:C.bg}} onClick={e=>e.stopPropagation()}>
       <div className="px-5 py-4 flex items-center justify-between" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
@@ -2729,14 +2740,17 @@ function SickLeaveModal({patient,onClose}){
       </div>
       <div className="p-5 space-y-3">
         <div className="rounded-xl px-3.5 py-2.5 text-[12px]" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`,color:C.ink2}}>
-          For <b style={{color:C.ink}}>{patient.name}</b> · issued under <b style={{color:C.ink}}>{GODOC_SICK_LEAVE_DOCTOR}</b> with the Go Doc signature.
+          For <b style={{color:C.ink}}>{patient.name}</b> · carries the <b style={{color:C.ink}}>Go Doc</b> signature &amp; stamp plus the doctor's signature.
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Start date"><input type="date" value={start} onChange={e=>setStart(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
-          <Field label="Number of days"><input type="number" min="1" max="60" value={days} onChange={e=>setDays(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+          <Field label="Issue date"><input type="date" value={issue} onChange={e=>setIssue(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+          <Field label="Leave start date"><input type="date" value={start} onChange={e=>setStart(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         </div>
+        <Field label="Number of days"><input type="number" min="1" max="60" value={days} onChange={e=>setDays(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         <div className="text-[12px]" style={{color:C.grey}}>Covers <b style={{color:C.ink}}>{fmt(start)}</b> → <b style={{color:C.ink}}>{fmt(end)}</b> ({d} day{d>1?"s":""}).</div>
+        <Field label="Doctor (signature)"><input value={doctor} onChange={e=>setDoctor(e.target.value)} placeholder="Dr. Omar Youssef" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         <Field label="Reason / diagnosis" optional><input value={dx} onChange={e=>setDx(e.target.value)} placeholder="e.g. Acute low back pain — or leave blank" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+        <Field label="Description" optional><textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} placeholder="Brief description of the condition / examination findings" className={inp+" resize-none"} style={{border:`1px solid ${C.line}`}}/></Field>
         <Field label="Medical advice" optional><textarea value={rest} onChange={e=>setRest(e.target.value)} rows={2} placeholder="e.g. Bed rest, avoid heavy lifting, follow-up in 1 week" className={inp+" resize-none"} style={{border:`1px solid ${C.line}`}}/></Field>
         <div className="flex gap-2 pt-1">
           <button onClick={onClose} className="flex-1 py-3 rounded-xl font-semibold" style={{background:"#fff",color:C.ink,border:`1px solid ${C.line}`}}>Cancel</button>
