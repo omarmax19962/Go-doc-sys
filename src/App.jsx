@@ -757,7 +757,8 @@ const printSickLeave = (patient, opts={}) => {
     .stamp .s2{font-size:8px;letter-spacing:2px;text-transform:uppercase;margin-top:3px;}
     .stamp .s3{font-size:7px;letter-spacing:1px;margin-top:2px;color:#5b9a90;}
     .foot{margin-top:46px;border-top:1px solid #E6EBEE;padding-top:14px;font-size:11px;color:#8794A1;text-align:center;line-height:1.6;}
-    @media print{body{padding:0;} .noprint{display:none;}}
+    @page{margin:0;}
+    @media print{body{padding:28px 32px;} .noprint{display:none;}}
     .btn{background:#1E2A3A;color:#fff;border:none;padding:10px 18px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;}
   </style></head><body><div class="wrap">
     <div class="noprint" style="text-align:right;margin-bottom:16px;"><button class="btn" onclick="window.print()">Print / Save as PDF</button></div>
