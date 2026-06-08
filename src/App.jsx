@@ -2723,13 +2723,12 @@ function SickLeaveModal({patient,onClose}){
   const today=new Date().toISOString().slice(0,10);
   const[issue,setIssue]=useState(today);
   const[start,setStart]=useState(today);
-  const[days,setDays]=useState(1);
+  const[end,setEnd]=useState(today);
   const[doctor,setDoctor]=useState(GODOC_SICK_LEAVE_DOCTOR);
   const[dx,setDx]=useState(patient.dx?((patient.dx.code?patient.dx.code+" · ":"")+patient.dx.label):"");
   const[desc,setDesc]=useState("");
   const[rest,setRest]=useState("");
-  const d=Math.max(1,parseInt(days,10)||1);
-  const end=(()=>{const x=new Date((start||today)+"T00:00:00");x.setDate(x.getDate()+d-1);return x.toISOString().slice(0,10);})();
+  const d=(()=>{const a=new Date((start||today)+"T00:00:00");const b=new Date((end||start||today)+"T00:00:00");return Math.max(1,Math.round((b-a)/86400000)+1);})();
   const fmt=v=>{try{return new Date(v+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});}catch{return v;}};
   const generate=()=>{printSickLeave(patient,{issueDate:issue,startDate:start,days:d,endDate:end,doctor:(doctor||"").trim()||GODOC_SICK_LEAVE_DOCTOR,diagnosis:dx,description:desc,restNote:rest});onClose();};
   return(<div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={onClose}>
@@ -2746,7 +2745,7 @@ function SickLeaveModal({patient,onClose}){
           <Field label="Issue date"><input type="date" value={issue} onChange={e=>setIssue(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
           <Field label="Leave start date"><input type="date" value={start} onChange={e=>setStart(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         </div>
-        <Field label="Number of days"><input type="number" min="1" max="60" value={days} onChange={e=>setDays(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+        <Field label="Leave end date"><input type="date" value={end} min={start} onChange={e=>setEnd(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         <div className="text-[12px]" style={{color:C.grey}}>Covers <b style={{color:C.ink}}>{fmt(start)}</b> → <b style={{color:C.ink}}>{fmt(end)}</b> ({d} day{d>1?"s":""}).</div>
         <Field label="Doctor (signature)"><input value={doctor} onChange={e=>setDoctor(e.target.value)} placeholder="Dr. Omar Youssef" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
         <Field label="Reason / diagnosis" optional><input value={dx} onChange={e=>setDx(e.target.value)} placeholder="e.g. Acute low back pain — or leave blank" className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
