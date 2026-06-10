@@ -1719,7 +1719,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
       {tab==="settings"&&<SettingsTab config={config} updateConfig={updateConfig}/>}
     </div>
 
-    {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc)=>{addPatient(p,b,d,doc);setIntake(false);}}/>}
+    {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc,t)=>{addPatient(p,b,d,doc,t);setIntake(false);}}/>}
     {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} doctors={doctors} bookSession={bookSession} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient} submitNote={submitNote} exerciseLib={exerciseLib} modalityLib={modalityLib}/>}
     {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
     {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
@@ -3275,7 +3275,7 @@ function SettingsTab({config,updateConfig}){
 function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
   const[step,setStep]=useState(1);const[q,setQ]=useState("");
   const[f,setF]=useState({name:"",age:"",gender:"",phone:"",complaint:"",history:"",files:[],zone:"",locText:"",locUrl:"",source:"",tags:[],dx:null});
-  const[dxOpen,setDxOpen]=useState(false);const[mode,setMode]=useState(null);const[date,setDate]=useState("");const[doctor,setDoctor]=useState(null);
+  const[dxOpen,setDxOpen]=useState(false);const[mode,setMode]=useState(null);const[date,setDate]=useState("");const[time,setTime]=useState("09:00");const[doctor,setDoctor]=useState(null);
   const set=k=>v=>setF(s=>({...s,[k]:v}));
   const norm=s=>(s||"").toLowerCase().replace(/\s+/g," ").trim();
   const digits=s=>(s||"").replace(/\D/g,"");
@@ -3325,12 +3325,14 @@ function Intake({doctors,patients=[],onClose,onSave,onOpenExisting}){
         {step===3&&<><div className="grid grid-cols-2 gap-3 mb-4">
           <button onClick={()=>setMode("book")} className="p-4 rounded-2xl text-left" style={{background:mode==="book"?"#F4FBFC":"#fff",border:`1.5px solid ${mode==="book"?C.teal:C.line}`}}><Calendar size={20} color={C.green}/><div className="font-bold mt-2">Book 1st visit</div><div className="text-[11px]" style={{color:C.grey}}>Assessment</div></button>
           <button onClick={()=>setMode("lead")} className="p-4 rounded-2xl text-left" style={{background:mode==="lead"?"#F4FBFC":"#fff",border:`1.5px solid ${mode==="lead"?C.teal:C.line}`}}><Clock size={20} color={C.amber}/><div className="font-bold mt-2">Just a lead</div></button></div>
-          {mode==="book"&&<><Field label="Date of 1st visit"><input type="date" value={date} onChange={e=>setDate(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:date?C.ink:C.grey}}/></Field>
+          {mode==="book"&&<><div className="grid grid-cols-2 gap-3">
+            <Field label="Date of 1st visit"><input type="date" value={date} onChange={e=>setDate(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:date?C.ink:C.grey}}/></Field>
+            <Field label="Time"><input type="time" step="900" value={time} onChange={e=>setTime(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`,color:time?C.ink:C.grey}}/></Field></div>
             <div className="mt-3"><span className="text-[12px] font-semibold" style={{color:C.ink2}}>Assign doctor · {f.zone||"zone not set"} first</span>
               <div className="space-y-2 mt-1.5">{cand.map(d=>{const on=doctor===d.name;return(<button key={d.id} onClick={()=>setDoctor(d.name)} className="w-full text-left p-3 rounded-xl flex items-center justify-between" style={{background:on?"#F4FBFC":"#fff",border:`1.5px solid ${on?C.teal:C.line}`}}>
                 <div><div className="font-bold text-[14px]" style={{color:C.ink}}>{d.name}</div><div className="text-[12px]" style={{color:C.grey}}>{d.spec} · {d.slots?.length?[...new Set(d.slots.map(s=>s.split("-")[0]))].join(", "):"no slots"}</div></div>
                 <div className="flex items-center gap-2">{d.inZone&&<span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1" style={{background:C.green+"22",color:C.green}}><MapPin size={10}/>zone</span>}{on&&<CircleCheck size={18} color={C.teal}/>}</div></button>);})}</div></div></>}
-          <button disabled={!mode||!!dupPhone||(mode==="book"&&(!date||!doctor))} onClick={()=>{onSave(f,mode==="book",date,doctor);}} className="w-full mt-4 py-3.5 rounded-xl font-semibold text-white disabled:opacity-40" style={{background:C.ink}}>{mode==="book"?"Create & book":"Save lead"}</button></>}
+          <button disabled={!mode||!!dupPhone||(mode==="book"&&(!date||!time||!doctor))} onClick={()=>{onSave(f,mode==="book",date,doctor,time);}} className="w-full mt-4 py-3.5 rounded-xl font-semibold text-white disabled:opacity-40" style={{background:C.ink}}>{mode==="book"?"Create & book":"Save lead"}</button></>}
       </div>
       <DxSheet open={dxOpen} onClose={()=>setDxOpen(false)} onPick={v=>set("dx")(v)}/>
     </div></div>);

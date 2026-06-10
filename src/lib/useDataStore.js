@@ -254,7 +254,7 @@ export function useDataStore({ role, me }) {
     if (pt) notify('admin', `${pt.name} marked ${to}${note ? ` — ${note}` : ''}`, null, { patientId: pid })
   }, [patients, changeStatus, notify])
 
-  const addPatient = useCallback(async (p, booked, date, doctor) => {
+  const addPatient = useCallback(async (p, booked, date, doctor, time) => {
     const newRow = {
       ...p,
       status: booked ? 'booked' : 'lead',
@@ -267,7 +267,7 @@ export function useDataStore({ role, me }) {
     const inserted = fromPatient(data)
     setPatients((ps) => [...ps, inserted])
     if (booked) {
-      const v = { patient_id: inserted.id, doctor_name: doctor, type: 'Assessment', time: '12:00', date, status: 'scheduled' }
+      const v = { patient_id: inserted.id, doctor_name: doctor, type: 'Assessment', time: time || '09:00', date, status: 'scheduled' }
       const { data: vd } = await supabase.from('visits').insert(v).select().single()
       if (vd) {
         const iv = fromVisit(vd)
@@ -275,8 +275,8 @@ export function useDataStore({ role, me }) {
         await _billVisit(iv, inserted.name)
       }
     }
-    notify('admin', booked ? `New booking: ${p.name} → ${doctor} (${date})` : `New lead added: ${p.name}`, null, { patientId: inserted.id })
-    if (booked) notify('doctor', `New patient booked with you: ${p.name}`, doctor, { patientId: inserted.id })
+    notify('admin', booked ? `New booking: ${p.name} → ${doctor} (${date}${time ? ` ${time}` : ''})` : `New lead added: ${p.name}`, null, { patientId: inserted.id })
+    if (booked) notify('doctor', `New patient booked with you: ${p.name} (${date}${time ? ` ${time}` : ''})`, doctor, { patientId: inserted.id })
   }, [config, notify, _billVisit])
 
   const updatePatientFiles = useCallback(async (pid, files) => {
