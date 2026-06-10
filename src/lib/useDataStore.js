@@ -16,7 +16,7 @@ import {
   fromNotif,
 } from './db'
 import { openWhatsApp } from './wa'
-import { showLocalNotification } from './push'
+import { showLocalNotification, subscribeToPush, pushSupported } from './push'
 
 // Human label for a task's assignee — used in device notifications.
 const assigneeTail = (a) => a === 'omar' ? ' · for Omar' : a === 'michael' ? ' · for Michael' : ''
@@ -46,6 +46,15 @@ export function useDataStore({ role, me }) {
   const [error, setError] = useState(null)
   const meRef = useRef(me)
   useEffect(() => { meRef.current = me }, [me])
+
+  // Keep this device's Web Push subscription registered under the current
+  // identity. If permission was already granted on a past visit, re-subscribe
+  // silently on load so closed-tab pushes keep reaching the right person.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !pushSupported()) return
+    if (Notification.permission !== 'granted') return
+    subscribeToPush({ role, identity: role === 'doctor' ? me : null }).catch(() => {})
+  }, [role, me])
   // Ids this client just wrote, so realtime doesn't buzz us for our own changes.
   const localTaskWrites = useRef(new Map())
 
@@ -166,6 +175,13 @@ export function useDataStore({ role, me }) {
       .single()
     if (error) console.warn('notify failed', error)
     else setNotifs((ns) => ns.map((n) => (n.id === tmpId ? fromNotif(data) : n)))
+    // Fan out to real browser Web Push (works even when the site is closed).
+    // Fire-and-forget; the edge function targets the right recipient by target/to.
+    try {
+      supabase.functions
+        .invoke('send-push', { body: { target, to: to || null, text, link } })
+        .catch((e) => console.warn('push fanout failed', e))
+    } catch (e) { console.warn('push fanout error', e) }
   }, [])
 
   const markRead = useCallback(async (target, to) => {

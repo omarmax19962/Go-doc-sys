@@ -13,7 +13,7 @@ import { useAuth } from "./lib/useAuth";
 import { useDataStore } from "./lib/useDataStore";
 import { openWhatsApp } from "./lib/wa";
 import { planForDx } from "./lib/rehab";
-import { ensureNotifyPermission, notifPermission, notifSupported } from "./lib/push";
+import { ensureNotifyPermission, notifPermission, notifSupported, subscribeToPush } from "./lib/push";
 import Login from "./components/Login";
 
 /* ============================================================================
@@ -1404,11 +1404,11 @@ const ASSIGNEE_CHIP={both:{bg:"#EEF2F4",fg:C.ink2},omar:{bg:"#EAF6F7",fg:"#2E6E7
 const assigneeLabel=a=>({both:"Both",omar:"Omar",michael:"Michael"}[a]||a);
 const fmtDue=v=>{if(!v)return"";try{return new Date(v+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}catch{return v;}};
 
-function NotifEnable(){
+function NotifEnable({role="admin",identity=null,dark=false}){
   const[perm,setPerm]=useState(notifPermission());
   if(!notifSupported())return null;
-  if(perm==="granted")return <span className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold" style={{background:"#EAF6F7",color:"#2E6E73"}}><BellRing size={14}/>Alerts on</span>;
-  return <button onClick={async()=>{const r=await ensureNotifyPermission();setPerm(r);if(r==="granted"){try{const reg=await navigator.serviceWorker?.getRegistration();(reg?reg.showNotification.bind(reg):null)?.("Go Doc","Task alerts are on — you'll get a buzz here.",{icon:"/icon-192.png",badge:"/icon-192.png"});}catch{}}}} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:perm==="denied"?C.grey:C.teal,color:perm==="denied"?"#fff":C.ink}} disabled={perm==="denied"} title={perm==="denied"?"Notifications are blocked in your browser/phone settings":"Turn on device notifications"}><Bell size={14}/>{perm==="denied"?"Alerts blocked":"Turn on alerts"}</button>;
+  if(perm==="granted")return <span className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold" style={{background:dark?"rgba(255,255,255,0.12)":"#EAF6F7",color:dark?"#fff":"#2E6E73"}}><BellRing size={14}/>Alerts on</span>;
+  return <button onClick={async()=>{const r=await ensureNotifyPermission();setPerm(r);if(r==="granted"){try{await subscribeToPush({role,identity});}catch{}try{const reg=await navigator.serviceWorker?.getRegistration();(reg?reg.showNotification.bind(reg):null)?.("Go Doc","Push notifications are on — you'll get alerts even when this site is closed.",{icon:"/icon-192.png",badge:"/icon-192.png"});}catch{}}}} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:perm==="denied"?C.grey:C.teal,color:perm==="denied"?"#fff":C.ink}} disabled={perm==="denied"} title={perm==="denied"?"Notifications are blocked in your browser/phone settings":"Turn on device notifications"}><Bell size={14}/>{perm==="denied"?"Alerts blocked":"Turn on alerts"}</button>;
 }
 
 function TaskComposer({onAdd}){
@@ -1491,7 +1491,7 @@ function TasksTab({tasks,addTask,updateTask,removeTask}){
       <div className="flex items-center gap-1.5">
         {[["all","Everyone"],["omar","Omar"],["michael","Michael"]].map(([k,l])=>(<button key={k} onClick={()=>setFilter(k)} className="px-3 py-1.5 rounded-full text-[12px] font-bold" style={{background:filter===k?C.teal:"#fff",color:filter===k?C.ink:C.grey,border:`1px solid ${filter===k?C.teal:C.line}`}}>{l}</button>))}
       </div>
-      <NotifEnable/>
+      <NotifEnable role="admin"/>
     </div>
     <TaskComposer onAdd={addTask}/>
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3426,7 +3426,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5"><div className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:C.teal}}><Stethoscope size={18} color={C.ink}/></div>
             <div><h1 className="text-white text-[18px] font-bold" style={{fontFamily:HEAD}}>{me}</h1><p className="text-[12px]" style={{color:C.tealSoft}}>{mine.length} upcoming · {mySlots.length} slots/wk</p></div></div>
-          <NotifBell items={(notifs||[]).filter(n=>n.target==="doctor"&&(!n.to||n.to===me))} onOpen={()=>markRead&&markRead("doctor",me)} onNavigate={navigate} dark/>
+          <div className="flex items-center gap-2"><NotifEnable role="doctor" identity={me} dark/><NotifBell items={(notifs||[]).filter(n=>n.target==="doctor"&&(!n.to||n.to===me))} onOpen={()=>markRead&&markRead("doctor",me)} onNavigate={navigate} dark/></div>
         </div>
         <div className="flex gap-1.5 mt-4">
           {[["visits","Visits"],["calendar","Calendar"],["patients","Patients"],["avail","Availability"]].map(([k,l])=>(<button key={k} onClick={()=>setTab(k)} className="flex-1 py-2 rounded-xl text-[12px] font-bold" style={{background:tab===k?C.teal:"rgba(255,255,255,0.1)",color:tab===k?C.ink:"#fff"}}>{l}</button>))}
