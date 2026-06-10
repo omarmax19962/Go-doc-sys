@@ -4,7 +4,8 @@ import {
   ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Pencil, Paperclip, Link2,
   CircleCheck, AlertTriangle, MessageSquare, CornerUpLeft, Trash2, Activity, Wallet,
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
-  Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle, Eye, Image as ImageIcon
+  Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle, Eye, Image as ImageIcon,
+  ListChecks, Lightbulb, GripVertical, BellRing
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
@@ -12,6 +13,7 @@ import { useAuth } from "./lib/useAuth";
 import { useDataStore } from "./lib/useDataStore";
 import { openWhatsApp } from "./lib/wa";
 import { planForDx } from "./lib/rehab";
+import { ensureNotifyPermission, notifPermission, notifSupported } from "./lib/push";
 import Login from "./components/Login";
 
 /* ============================================================================
@@ -1219,7 +1221,8 @@ function AppWithData({ role, me, onSignOut }){
   if (store.error) return <FullScreenError msg={`Database error: ${store.error}. Check that the schema.sql has been run.`} onSignOut={onSignOut} />;
 
   const {
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages,
+    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages, tasks,
+    addTask, updateTask, removeTask,
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
@@ -1237,7 +1240,7 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1388,14 +1391,136 @@ function _LegacyMockApp(){
 }
 
 /* =============================== ADMIN =============================== */
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}){
+/* ============================================================================
+   TASKS — a shared idea / task board between Omar & Michael. Kanban-style
+   (To do / In progress / Done) with assignee, priority and due date. New tasks
+   raise a device notification on the other person's installed app.
+============================================================================ */
+const TASK_ASSIGNEES=[["both","Both"],["omar","Omar"],["michael","Michael"]];
+const TASK_COLS=[["todo","To do"],["doing","In progress"],["done","Done"]];
+const TASK_PRIOS=[["high","High"],["normal","Normal"],["low","Low"]];
+const PRIO_COLOR={high:C.amber,normal:C.teal,low:C.grey};
+const ASSIGNEE_CHIP={both:{bg:"#EEF2F4",fg:C.ink2},omar:{bg:"#EAF6F7",fg:"#2E6E73"},michael:{bg:"#FBF0E2",fg:"#9A6B25"}};
+const assigneeLabel=a=>({both:"Both",omar:"Omar",michael:"Michael"}[a]||a);
+const fmtDue=v=>{if(!v)return"";try{return new Date(v+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short"});}catch{return v;}};
+
+function NotifEnable(){
+  const[perm,setPerm]=useState(notifPermission());
+  if(!notifSupported())return null;
+  if(perm==="granted")return <span className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold" style={{background:"#EAF6F7",color:"#2E6E73"}}><BellRing size={14}/>Alerts on</span>;
+  return <button onClick={async()=>{const r=await ensureNotifyPermission();setPerm(r);if(r==="granted"){try{const reg=await navigator.serviceWorker?.getRegistration();(reg?reg.showNotification.bind(reg):null)?.("Go Doc","Task alerts are on — you'll get a buzz here.",{icon:"/icon-192.png",badge:"/icon-192.png"});}catch{}}}} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:perm==="denied"?C.grey:C.teal,color:perm==="denied"?"#fff":C.ink}} disabled={perm==="denied"} title={perm==="denied"?"Notifications are blocked in your browser/phone settings":"Turn on device notifications"}><Bell size={14}/>{perm==="denied"?"Alerts blocked":"Turn on alerts"}</button>;
+}
+
+function TaskComposer({onAdd}){
+  const blank={title:"",detail:"",kind:"task",assignee:"both",priority:"normal",dueDate:""};
+  const[f,setF]=useState(blank);
+  const set=k=>v=>setF(s=>({...s,[k]:v}));
+  const submit=()=>{if(!f.title.trim())return;onAdd({...f,status:"todo"});setF(blank);};
+  return(<div className="bg-white rounded-2xl p-4 space-y-3" style={{border:`1px solid ${C.line}`}}>
+    <div className="flex gap-2">
+      {[["task","Task"],["idea","Idea"]].map(([k,l])=>(<button key={k} onClick={()=>set("kind")(k)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-bold" style={{background:f.kind===k?C.ink:"#F0F3F5",color:f.kind===k?"#fff":C.ink2}}>{k==="idea"?<Lightbulb size={13}/>:<ListChecks size={13}/>}{l}</button>))}
+    </div>
+    <input value={f.title} onChange={e=>set("title")(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}} placeholder={f.kind==="idea"?"Capture an idea…":"What needs doing?"} className={inp} style={{border:`1px solid ${C.line}`}}/>
+    <textarea value={f.detail} onChange={e=>set("detail")(e.target.value)} rows={2} placeholder="Details (optional)" className={inp+" resize-none"} style={{border:`1px solid ${C.line}`}}/>
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <Field label="For"><select value={f.assignee} onChange={e=>set("assignee")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{TASK_ASSIGNEES.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></Field>
+      <Field label="Priority"><select value={f.priority} onChange={e=>set("priority")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{TASK_PRIOS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select></Field>
+      <Field label="Due" optional><input type="date" value={f.dueDate} onChange={e=>set("dueDate")(e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/></Field>
+    </div>
+    <button onClick={submit} disabled={!f.title.trim()} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl font-bold text-white disabled:opacity-40" style={{background:C.ink}}><Plus size={16}/>Add {f.kind==="idea"?"idea":"task"}</button>
+  </div>);
+}
+
+function TaskCard({task,onUpdate,onRemove}){
+  const[edit,setEdit]=useState(false);
+  const[t,setT]=useState(task);
+  useEffect(()=>{setT(task);},[task]);
+  const a=ASSIGNEE_CHIP[task.assignee]||ASSIGNEE_CHIP.both;
+  const idx=TASK_COLS.findIndex(([k])=>k===task.status);
+  const overdue=task.dueDate&&task.status!=="done"&&task.dueDate<new Date().toISOString().slice(0,10);
+  if(edit)return(<div className="bg-white rounded-xl p-3 space-y-2" style={{border:`1px solid ${C.teal}`}}>
+    <input value={t.title} onChange={e=>setT(s=>({...s,title:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`,fontSize:14}}/>
+    <textarea value={t.detail||""} onChange={e=>setT(s=>({...s,detail:e.target.value}))} rows={2} placeholder="Details" className={inp+" resize-none"} style={{border:`1px solid ${C.line}`,fontSize:13}}/>
+    <div className="grid grid-cols-3 gap-2">
+      <select value={t.assignee} onChange={e=>setT(s=>({...s,assignee:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`,fontSize:12,padding:"6px 8px"}}>{TASK_ASSIGNEES.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>
+      <select value={t.priority} onChange={e=>setT(s=>({...s,priority:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`,fontSize:12,padding:"6px 8px"}}>{TASK_PRIOS.map(([k,l])=><option key={k} value={k}>{l}</option>)}</select>
+      <input type="date" value={t.dueDate||""} onChange={e=>setT(s=>({...s,dueDate:e.target.value}))} className={inp} style={{border:`1px solid ${C.line}`,fontSize:12,padding:"6px 8px"}}/>
+    </div>
+    <div className="flex gap-2 justify-end">
+      <button onClick={()=>{setEdit(false);setT(task);}} className="px-3 py-1.5 rounded-lg text-[12px] font-semibold" style={{background:"#F0F3F5",color:C.ink}}>Cancel</button>
+      <button onClick={()=>{onUpdate(task.id,{title:t.title,detail:t.detail,assignee:t.assignee,priority:t.priority,dueDate:t.dueDate||null});setEdit(false);}} className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-white" style={{background:C.ink}}>Save</button>
+    </div>
+  </div>);
+  return(<div className="bg-white rounded-xl p-3 group" style={{border:`1px solid ${C.line}`,opacity:task.status==="done"?0.7:1}}>
+    <div className="flex items-start gap-2">
+      <button onClick={()=>onUpdate(task.id,{status:task.status==="done"?"todo":"done"})} className="mt-0.5 shrink-0 w-5 h-5 rounded-md flex items-center justify-center" style={{border:`2px solid ${task.status==="done"?C.green:C.line}`,background:task.status==="done"?C.green:"#fff"}} title={task.status==="done"?"Mark not done":"Mark done"}>{task.status==="done"&&<Check size={13} color="#fff"/>}</button>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          {task.kind==="idea"&&<Lightbulb size={13} color={C.amber}/>}
+          <span className="text-[14px] font-semibold leading-snug" style={{color:C.ink,textDecoration:task.status==="done"?"line-through":"none"}}>{task.title}</span>
+        </div>
+        {task.detail&&<p className="text-[12.5px] mt-0.5" style={{color:C.grey}}>{task.detail}</p>}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{background:a.bg,color:a.fg}}>{assigneeLabel(task.assignee)}</span>
+          {task.priority!=="normal"&&<span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{background:task.priority==="high"?"#FBF1E5":"#F0F3F5",color:PRIO_COLOR[task.priority]}}>{task.priority==="high"?"High":"Low"}</span>}
+          {task.dueDate&&<span className="text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1" style={{background:overdue?"#FDECEA":"#F0F3F5",color:overdue?C.red:C.grey}}><Clock size={10}/>{fmtDue(task.dueDate)}</span>}
+        </div>
+      </div>
+    </div>
+    <div className="flex items-center justify-between mt-2.5 pt-2" style={{borderTop:`1px solid ${C.bg}`}}>
+      <div className="flex items-center gap-1">
+        <button onClick={()=>idx>0&&onUpdate(task.id,{status:TASK_COLS[idx-1][0]})} disabled={idx<=0} className="px-2 py-1 rounded-lg text-[11px] font-bold disabled:opacity-30" style={{background:"#F0F3F5",color:C.ink2}}>← </button>
+        <button onClick={()=>idx<TASK_COLS.length-1&&onUpdate(task.id,{status:TASK_COLS[idx+1][0]})} disabled={idx>=TASK_COLS.length-1} className="px-2 py-1 rounded-lg text-[11px] font-bold disabled:opacity-30" style={{background:"#F0F3F5",color:C.ink2}}> →</button>
+      </div>
+      <div className="flex items-center gap-1">
+        <button onClick={()=>setEdit(true)} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{background:"#F0F3F5"}}><Pencil size={13} color={C.ink2}/></button>
+        <button onClick={()=>onRemove(task.id)} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{background:"#FDECEA"}}><Trash2 size={13} color={C.red}/></button>
+      </div>
+    </div>
+  </div>);
+}
+
+function TasksTab({tasks,addTask,updateTask,removeTask}){
+  const[filter,setFilter]=useState("all"); // all | omar | michael
+  const[showDone,setShowDone]=useState(false);
+  const list=(tasks||[]).filter(t=>filter==="all"?true:(t.assignee===filter||t.assignee==="both"));
+  const col=k=>list.filter(t=>t.status===k).sort((a,b)=>{const pr={high:0,normal:1,low:2};return (pr[a.priority]-pr[b.priority])||((a.dueDate||"9999")<(b.dueDate||"9999")?-1:1);});
+  const counts=Object.fromEntries(TASK_COLS.map(([k])=>[k,list.filter(t=>t.status===k).length]));
+  return(<div className="p-4 sm:p-6 space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5">
+        {[["all","Everyone"],["omar","Omar"],["michael","Michael"]].map(([k,l])=>(<button key={k} onClick={()=>setFilter(k)} className="px-3 py-1.5 rounded-full text-[12px] font-bold" style={{background:filter===k?C.teal:"#fff",color:filter===k?C.ink:C.grey,border:`1px solid ${filter===k?C.teal:C.line}`}}>{l}</button>))}
+      </div>
+      <NotifEnable/>
+    </div>
+    <TaskComposer onAdd={addTask}/>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {TASK_COLS.map(([k,l])=>{
+        const items=col(k);
+        const collapsed=k==="done"&&!showDone;
+        return(<div key={k} className="rounded-2xl p-3" style={{background:"#fff",border:`1px solid ${C.line}`}}>
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h3 className="text-[13px] font-bold uppercase tracking-wide flex items-center gap-2" style={{color:C.ink2,fontFamily:HEAD}}>{l}<span className="text-[11px] px-1.5 rounded-full" style={{background:C.bg,color:C.grey}}>{counts[k]||0}</span></h3>
+            {k==="done"&&counts.done>0&&<button onClick={()=>setShowDone(s=>!s)} className="text-[11px] font-bold" style={{color:C.teal}}>{showDone?"Hide":"Show"}</button>}
+          </div>
+          {collapsed?<p className="text-[12px] text-center py-4" style={{color:C.grey}}>{counts.done} done — tap “Show”.</p>
+            :items.length===0?<p className="text-[12px] text-center py-6" style={{color:C.grey}}>{k==="todo"?"Nothing here yet.":k==="doing"?"Nothing in progress.":"None done yet."}</p>
+            :<div className="space-y-2.5">{items.map(t=><TaskCard key={t.id} task={t} onUpdate={updateTask} onRemove={removeTask}/>)}</div>}
+        </div>);
+      })}
+    </div>
+  </div>);
+}
+
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   // Notification deep-link: a tapped notification jumps to the relevant place.
   // A `view` (tab) takes priority; otherwise open the patient's file.
   const navigate=(link)=>{if(!link)return;if(link.view){setTab(link.view);}else if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}};
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
-  const tabs=[["today","Today",LayoutGrid],["calendar","Calendar",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
+  const tabs=[["today","Today",LayoutGrid],["calendar","Calendar",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["tasks","Tasks",ListChecks],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
+  const openTasks=(tasks||[]).filter(t=>t.status!=="done").length;
   const statusMix=STATUSES.map(s=>({name:STATUS_LABEL[s],key:s,v:patients.filter(p=>p.status===s).length})).filter(x=>x.v);
   const byDoctorVisits=doctors.map(d=>({name:(d.name.split(" ")[1]||d.name),v:visits.filter(v=>v.doctorName===d.name).length}));
   const docNames=doctors.map(d=>d.name);
@@ -1423,7 +1548,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     </header>
     <div className="flex gap-1 px-4 sm:px-6 py-2.5 overflow-x-auto" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
       {tabs.map(([k,l,Icon])=>(<button key={k} onClick={()=>setTab(k)} className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold whitespace-nowrap" style={{background:tab===k?C.teal:"transparent",color:tab===k?C.ink:C.grey}}>
-        <Icon size={15}/>{l}{k==="review"&&pending>0&&<span className="text-[11px] px-1.5 rounded-full font-bold" style={{background:C.red,color:"#fff"}}>{pending}</span>}</button>))}
+        <Icon size={15}/>{l}{k==="review"&&pending>0&&<span className="text-[11px] px-1.5 rounded-full font-bold" style={{background:C.red,color:"#fff"}}>{pending}</span>}{k==="tasks"&&openTasks>0&&<span className="text-[11px] px-1.5 rounded-full font-bold" style={{background:C.ink,color:"#fff"}}>{openTasks}</span>}</button>))}
     </div>
 
     <div className="flex-1 overflow-y-auto p-4 sm:p-6">
@@ -1580,6 +1705,9 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
 
       {/* DOCTORS — log / add / remove / availability calendar / files / profile+cases */}
       {tab==="doctors"&&<DoctorsTab doctors={doctors} patients={patients} addDoctor={addDoctor} removeDoctor={removeDoctor} updateDoctorSlots={updateDoctorSlots}/>}
+
+      {/* TASKS — shared idea / task board between Omar & Michael */}
+      {tab==="tasks"&&<TasksTab tasks={tasks} addTask={addTask} updateTask={updateTask} removeTask={removeTask}/>}
 
       {/* FINANCES — mirrors the Sessions Tracker (admin-only) */}
       {tab==="finances"&&<Finances finances={finances} updateFinance={updateFinance} settleFinances={settleFinances} expenses={expenses} addExpense={addExpense} updateExpense={updateExpense} removeExpense={removeExpense} growthMonths={growthMonths} addGrowthMonth={addGrowthMonth} updateGrowthMonth={updateGrowthMonth} removeGrowthMonth={removeGrowthMonth} patients={patients} doctors={doctors} config={config}/>}

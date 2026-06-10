@@ -12,9 +12,14 @@ import {
   fromGrowth, toGrowth,
   fromConfig, toConfig,
   fromPackage, toPackage,
+  fromTask, toTask,
   fromNotif,
 } from './db'
 import { openWhatsApp } from './wa'
+import { showLocalNotification } from './push'
+
+// Human label for a task's assignee — used in device notifications.
+const assigneeTail = (a) => a === 'omar' ? ' · for Omar' : a === 'michael' ? ' · for Michael' : ''
 
 /**
  * useDataStore — single source of truth for the app. Loads all entities once,
@@ -36,10 +41,13 @@ export function useDataStore({ role, me }) {
   const [packages, setPackages] = useState([])
   const [config, setConfigState] = useState({ defaultFee: 500, defaultPct: 0.6, currency: 'EGP', noShowConsumesSlot: true, packageCreationTiming: 'post_assessment' })
   const [notifs, setNotifs] = useState([])
+  const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const meRef = useRef(me)
   useEffect(() => { meRef.current = me }, [me])
+  // Ids this client just wrote, so realtime doesn't buzz us for our own changes.
+  const localTaskWrites = useRef(new Map())
 
   // ---- INITIAL LOAD ----
   // When a doctor signs in we only pull *their* rows (patients/visits/notes/
@@ -58,7 +66,7 @@ export function useDataStore({ role, me }) {
       const notifQ = isDoctor
         ? supabase.from('notifications').select('*').eq('target', 'doctor').eq('to', me).order('ts', { ascending: false }).limit(50)
         : supabase.from('notifications').select('*').order('ts', { ascending: false }).limit(50)
-      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm] = await Promise.all([
+      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm, tk] = await Promise.all([
         supabase.from('doctors').select('*').order('id'), // small table, needed for name/colour lookups
         scoped('patients', 'doctor'),
         scoped('visits', 'doctor_name'),
@@ -72,6 +80,8 @@ export function useDataStore({ role, me }) {
         // expenses + growth are admin-only finance ledgers — skip for doctors
         isDoctor ? Promise.resolve({ data: [] }) : supabase.from('expenses').select('*').order('id'),
         isDoctor ? Promise.resolve({ data: [] }) : supabase.from('growth_months').select('*').order('month'),
+        // shared task / idea board — admin-only
+        isDoctor ? Promise.resolve({ data: [] }) : supabase.from('tasks').select('*').order('created_at', { ascending: false }),
       ])
       if (d.error) throw d.error
       setDoctors((d.data || []).map(fromDoctor))
@@ -86,6 +96,7 @@ export function useDataStore({ role, me }) {
       setPackages((pk.data || []).map(fromPackage))
       setExpenses((exp.data || []).map(fromExpense))
       setGrowthMonths((gm.data || []).map(fromGrowth))
+      setTasks((tk.data || []).map(fromTask))
     } catch (e) {
       console.error('[useDataStore] load failed', e)
       setError(e.message || String(e))
@@ -121,6 +132,20 @@ export function useDataStore({ role, me }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'growth_months' }, () => {
         if (isDoctor) return
         supabase.from('growth_months').select('*').order('month').then(({ data }) => setGrowthMonths((data || []).map(fromGrowth)))
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (p) => {
+        if (isDoctor) return // doctors don't have the board
+        if (p.eventType === 'DELETE') { setTasks((ts) => ts.filter((t) => t.id !== (p.old && p.old.id))); return }
+        const row = fromTask(p.new)
+        setTasks((ts) => ts.some((t) => t.id === row.id) ? ts.map((t) => t.id === row.id ? row : t) : [row, ...ts])
+        // Skip a device buzz for a change this very client just made.
+        const mine = localTaskWrites.current.get(row.id)
+        if (mine && Date.now() - mine < 6000) return
+        if (p.eventType === 'INSERT') {
+          showLocalNotification(row.kind === 'idea' ? '💡 New idea' : '✅ New task', `${row.title}${assigneeTail(row.assignee)}`, { tag: `task-${row.id}` })
+        } else if (p.eventType === 'UPDATE' && row.status === 'done' && p.old && p.old.status !== 'done') {
+          showLocalNotification('Task completed', row.title, { tag: `task-${row.id}` })
+        }
       })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
@@ -607,6 +632,37 @@ export function useDataStore({ role, me }) {
     }
   }, [visits, patients, finances, config, notify])
 
+  // ---- TASKS (shared idea / task board) ----
+  const addTask = useCallback(async (t) => {
+    const row = { ...t, createdBy: role === 'admin' ? 'admin' : meRef.current }
+    const { data, error } = await supabase.from('tasks').insert(toTask(row)).select().single()
+    if (error) { console.error('addTask', error); return }
+    const ins = fromTask(data)
+    localTaskWrites.current.set(ins.id, Date.now())
+    setTasks((ts) => ts.some((x) => x.id === ins.id) ? ts : [ins, ...ts])
+  }, [role])
+
+  const updateTask = useCallback(async (id, patch) => {
+    let next = null
+    setTasks((ts) => ts.map((t) => { if (t.id !== id) return t; next = { ...t, ...patch }; return next }))
+    localTaskWrites.current.set(id, Date.now())
+    const dbPatch = {}
+    if ('title' in patch) dbPatch.title = patch.title ? patch.title.trim() : ''
+    if ('detail' in patch) dbPatch.detail = patch.detail ? patch.detail.trim() : null
+    if ('kind' in patch) dbPatch.kind = patch.kind
+    if ('assignee' in patch) dbPatch.assignee = patch.assignee
+    if ('priority' in patch) dbPatch.priority = patch.priority
+    if ('dueDate' in patch) dbPatch.due_date = patch.dueDate || null
+    if ('status' in patch) { dbPatch.status = patch.status; dbPatch.done_at = patch.status === 'done' ? nowISO() : null }
+    await supabase.from('tasks').update(dbPatch).eq('id', id)
+  }, [])
+
+  const removeTask = useCallback(async (id) => {
+    localTaskWrites.current.set(id, Date.now())
+    setTasks((ts) => ts.filter((t) => t.id !== id))
+    await supabase.from('tasks').delete().eq('id', id)
+  }, [])
+
   const updateConfig = useCallback(async (patch) => {
     const next = { ...config, ...patch }
     setConfigState(next)
@@ -800,7 +856,7 @@ export function useDataStore({ role, me }) {
 
   return {
     // data
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages,
+    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages, tasks,
     loading, error,
     // mutations
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
@@ -810,6 +866,7 @@ export function useDataStore({ role, me }) {
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,
     bookSession, rescheduleVisit, deleteVisit,
+    addTask, updateTask, removeTask,
     setExerciseLib: setExerciseLibPersisted,
     setModalityLib: setModalityLibPersisted,
     notify, markRead,

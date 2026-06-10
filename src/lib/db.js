@@ -321,6 +321,33 @@ export const toConfig = (c) => ({
   tmpl_doctor: c.tmplDoctor ?? '',
 })
 
+// ---- TASKS (shared idea / task board) ----
+export const fromTask = (r) => ({
+  id: r.id,
+  kind: r.kind || 'task',
+  title: r.title || '',
+  detail: r.detail || '',
+  assignee: r.assignee || 'both',
+  status: r.status || 'todo',
+  priority: r.priority || 'normal',
+  dueDate: r.due_date || null,
+  createdBy: r.created_by || null,
+  doneAt: r.done_at || null,
+  createdAt: r.created_at || null,
+  updatedAt: r.updated_at || null,
+})
+export const toTask = (t) => ({
+  kind: t.kind || 'task',
+  title: t.title ? t.title.trim() : '',
+  detail: t.detail ? t.detail.trim() : null,
+  assignee: t.assignee || 'both',
+  status: t.status || 'todo',
+  priority: t.priority || 'normal',
+  due_date: t.dueDate || null,
+  created_by: t.createdBy || null,
+  done_at: t.doneAt || null,
+})
+
 // ---- NOTIFICATIONS ----
 export const fromNotif = (r) => ({
   id: r.id,
