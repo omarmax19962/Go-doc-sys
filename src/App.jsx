@@ -3538,7 +3538,7 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
   const[ex,setEx]=useState({}),[mod,setMod]=useState({}),[rf,setRf]=useState(false),[rfn,setRfn]=useState("");
   const[dx,setDx]=useState(patient.dx||lastAssess?.dx||null),[sheet,setSheet]=useState(false);
   const[plan,setPlan]=useState(lastAssess?.plan||"");
-  const[customEx,setCustomEx]=useState([]),[newEx,setNewEx]=useState(""),[nextDate,setNextDate]=useState("");
+  const[customEx,setCustomEx]=useState([]),[newEx,setNewEx]=useState(""),[nextDate,setNextDate]=useState(""),[nextTime,setNextTime]=useState("");
   // Session date — the day the session actually happened. Defaults to today
   // (the normal same-day case) but pre-fills a past scheduled visit's date.
   const _today=new Date().toISOString().slice(0,10);
@@ -3619,8 +3619,11 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
       <NoteArea label="Patient education" value={education} set={setEducation} rows={2} placeholder="Condition management, injury-prevention strategies and adherence advice given to the patient…"/>
       <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
         <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Next session</div>
-        <input type="date" value={nextDate} onChange={e=>setNextDate(e.target.value)} className="w-full px-3 py-2.5 rounded-xl text-[15px] outline-none bg-white" style={{border:`1px solid ${C.line}`,color:nextDate?C.ink:C.grey}}/>
-        <p className="text-[11px] mt-1.5 flex items-center gap-1.5" style={{color:C.grey}}><Calendar size={12}/>Schedules the upcoming session for this patient.</p></div>
+        <div className="flex gap-2">
+          <input type="date" value={nextDate} onChange={e=>setNextDate(e.target.value)} className="flex-1 px-3 py-2.5 rounded-xl text-[15px] outline-none bg-white" style={{border:`1px solid ${C.line}`,color:nextDate?C.ink:C.grey}}/>
+          <input type="time" value={nextTime} step="900" onChange={e=>setNextTime(e.target.value)} className="w-[120px] px-3 py-2.5 rounded-xl text-[15px] outline-none bg-white" style={{border:`1px solid ${C.line}`,color:nextTime?C.ink:C.grey}}/>
+        </div>
+        <p className="text-[11px] mt-1.5 flex items-center gap-1.5" style={{color:C.grey}}><Calendar size={12}/>{nextDate?`Schedules ${nextDate}${nextTime?` at ${to12(nextTime)}`:" (no time set)"} — you'll get a reminder to log it when it's due.`:"Set a date and time for the upcoming session."}</p></div>
       {/* Free-form notes — anything that doesn't fit the SOAP boxes */}
       <SoapSection letter="✎" label="Notes" hint="Anything else worth recording"/>
       <NoteArea label="Additional notes" hint="free-form" value={additionalNotes} set={setAdditionalNotes} rows={3} placeholder="Any other observations, conversations, reminders or context for this session…"/>
@@ -3631,7 +3634,7 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
     </div>
     <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 pt-3 pb-5" style={{background:`linear-gradient(to top, ${C.bg} 75%, transparent)`}}>
       <button disabled={!can} onClick={()=>onSubmit({visitId:visit.id,patientId:patient.id,patientName:patient.name,doctorName:visit.doctorName,type:visit.type,
-        painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,redFlag:rf,redFlagNote:rfn,dx,sessionDate,
+        painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,nextSessionTime:nextTime,redFlag:rf,redFlagNote:rfn,dx,sessionDate,
         subjective,objective,measures,assessment,goals,hep,education,additionalNotes})}
         className="w-full py-4 rounded-2xl font-bold text-[15px] text-white" style={{background:can?C.ink:"#C9CDD2",boxShadow:can?"0 8px 20px rgba(30,42,58,0.25)":"none"}}>
         {can?"Complete & submit for review":isAssess?"Add diagnosis to submit":"Log pain + response"}</button></div>

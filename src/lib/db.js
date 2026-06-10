@@ -82,6 +82,7 @@ export const fromVisit = (r) => ({
   rescheduledToId: r.rescheduled_to_id || null,
   rescheduledFromId: r.rescheduled_from_id || null,
   soapFiled: !!r.soap_filed,
+  dueRemindedAt: r.due_reminded_at || null,
   packageId: r.package_id || null,
   packageSeq: r.package_seq ?? null,
   reminder24h: !!r.reminder_24h,

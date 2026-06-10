@@ -177,6 +177,44 @@ export function useDataStore({ role, me }) {
     await q
   }, [])
 
+  // ---- DUE-SESSION REMINDERS ----
+  // When a scheduled session's date + time arrives, nudge the assigned doctor to
+  // document it: logging the visit is what records the clinical case and releases
+  // the doctor's payment. Fires an in-app notification + a device notification
+  // (PWA) once per visit. `due_reminded_at` persists the fired state so it never
+  // repeats across reloads or devices. Runs only in the doctor's own app instance.
+  const remindedRef = useRef(new Set())
+  useEffect(() => {
+    if (role !== 'doctor') return
+    const check = () => {
+      const now = Date.now()
+      const due = visits.filter((v) => {
+        if (v.doctorName !== meRef.current || v.soapFiled || v.dueRemindedAt) return false
+        if (remindedRef.current.has(v.id)) return false
+        if (!['scheduled', 'confirmed', 'pending_confirmation'].includes(v.status)) return false
+        if (!v.date || !v.time) return false
+        const hm = /^(\d{1,2}):(\d{2})/.exec(v.time)
+        if (!hm) return false
+        const dueAt = new Date(`${v.date}T${hm[1].padStart(2, '0')}:${hm[2]}:00`).getTime()
+        return !Number.isNaN(dueAt) && dueAt <= now
+      })
+      due.forEach(async (v) => {
+        remindedRef.current.add(v.id)
+        const p = patients.find((x) => x.id === v.patientId)
+        const pname = p?.name || 'your patient'
+        const kind = (v.type || 'session').toLowerCase()
+        const stamp = nowISO()
+        await supabase.from('visits').update({ due_reminded_at: stamp }).eq('id', v.id)
+        setVisits((vs) => vs.map((x) => x.id === v.id ? { ...x, dueRemindedAt: stamp } : x))
+        notify('doctor', `⏰ Time to document ${pname}'s ${kind} — log the session now to record your case and receive your payment.`, meRef.current, { patientId: v.patientId })
+        showLocalNotification('Session ready to log', `${pname} · ${v.type} at ${v.time}. Tap to document it and get paid.`, { tag: `due-${v.id}`, url: '/' })
+      })
+    }
+    check()
+    const iv = setInterval(check, 60000)
+    return () => clearInterval(iv)
+  }, [visits, patients, role, notify])
+
   // ---- PATIENT MUTATIONS ----
   const _writePatient = async (id, patch) => {
     const { error } = await supabase.from('patients').update(toPatient(patch)).eq('id', id)
@@ -407,7 +445,7 @@ export function useDataStore({ role, me }) {
     // next session?
     if (n.nextSessionDate) {
       const { data: nv } = await supabase.from('visits').insert({
-        patient_id: n.patientId, doctor_name: n.doctorName, type: 'Treatment', time: '—', date: n.nextSessionDate, status: 'scheduled',
+        patient_id: n.patientId, doctor_name: n.doctorName, type: 'Treatment', time: n.nextSessionTime || '—', date: n.nextSessionDate, status: 'scheduled',
       }).select().single()
       if (nv) setVisits((vs) => [...vs, fromVisit(nv)])
     }
