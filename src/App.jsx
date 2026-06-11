@@ -5,7 +5,7 @@ import {
   CircleCheck, AlertTriangle, MessageSquare, CornerUpLeft, Trash2, Activity, Wallet,
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
   Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle, Eye, Image as ImageIcon,
-  ListChecks, Lightbulb, GripVertical, BellRing, TrendingUp
+  ListChecks, Lightbulb, GripVertical, BellRing, TrendingUp, ArrowUpDown
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
@@ -2413,14 +2413,17 @@ function Finances({finances,updateFinance,settleFinances,expenses=[],addExpense,
 
 function Billing({finances,updateFinance,currency="EGP"}){
   const[f,setF]=useState({from:"",to:"",doctor:"",status:"",method:""});
+  const[sortDir,setSortDir]=useState("desc");
   const docOpts=[...new Set(finances.map(x=>x.doctor))];
   const src=finances.filter(x=>(!(f.from||f.to)||inRange(x.date,f.from,f.to))&&(!f.doctor||x.doctor===f.doctor)&&(!f.status||x.status===f.status)&&(!f.method||x.method===f.method));
   // net = fee - discount; refunded/waived recognise no revenue or doctor earnings.
   const rows=src.map(x=>{const net=netFee(x);const eff=(x.status==="Refunded"||x.status==="Waived")?0:net;return{...x,net,eff,docEarn:eff*x.pct,godoc:eff*(1-x.pct)};});
+  // Date-sorted view for the ledger; tie-break by id so same-day rows stay stable.
+  const sortedRows=[...rows].sort((a,b)=>{const c=(a.date||"").localeCompare(b.date||"")||((a.id||0)-(b.id||0));return sortDir==="asc"?c:-c;});
   const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
   const byDoc=Object.values(rows.reduce((m,r)=>{(m[r.doctor]||=({doctor:r.doctor,sessions:0,rev:0,doc:0,go:0}));const o=m[r.doctor];o.sessions++;o.rev+=r.eff;o.doc+=r.docEarn;o.go+=r.godoc;return m;},{}));
   const cards=[["Sessions",rows.length,C.ink],["Gross billed",egp(sum("fee")),C.ink],["Discounts",egp(sum("discount")),"#8E5BB5"],["Net revenue",egp(sum("eff")),C.ink],["Doctor earnings",egp(sum("docEarn")),"#2E6E73"],["Go Doc earnings",egp(sum("godoc")),C.green]];
-  const exportCSV=()=>{const head=["Date","Doctor","Patient","Type","Fee","Discount","Net","Dr %","Dr earn","Go Doc","Status","Method"];const body=rows.map(r=>[r.date,r.doctor,r.patient,r.type,Math.round(r.fee),Math.round(r.discount||0),Math.round(r.net),Math.round(r.pct*100)+"%",Math.round(r.docEarn),Math.round(r.godoc),r.status,r.method]);const totals=["TOTAL","","","",Math.round(sum("fee")),Math.round(sum("discount")),Math.round(sum("net")),"",Math.round(sum("docEarn")),Math.round(sum("godoc")),"",""];downloadCSV(`godoc-billing-${new Date().toISOString().slice(0,10)}.csv`,[head,...body,totals]);};
+  const exportCSV=()=>{const head=["Date","Doctor","Patient","Type","Fee","Discount","Net","Dr %","Dr earn","Go Doc","Status","Method"];const body=sortedRows.map(r=>[r.date,r.doctor,r.patient,r.type,Math.round(r.fee),Math.round(r.discount||0),Math.round(r.net),Math.round(r.pct*100)+"%",Math.round(r.docEarn),Math.round(r.godoc),r.status,r.method]);const totals=["TOTAL","","","",Math.round(sum("fee")),Math.round(sum("discount")),Math.round(sum("net")),"",Math.round(sum("docEarn")),Math.round(sum("godoc")),"",""];downloadCSV(`godoc-billing-${new Date().toISOString().slice(0,10)}.csv`,[head,...body,totals]);};
   const gt="84px 1.2fr 1.1fr 76px 70px 64px 54px 84px 84px 100px 116px";
   return(<>
     <FilterBar onClear={()=>setF({from:"",to:"",doctor:"",status:"",method:""})}>
@@ -2454,8 +2457,8 @@ function Billing({finances,updateFinance,currency="EGP"}){
     </div>
     <div className="bg-white rounded-2xl overflow-x-auto" style={{border:`1px solid ${C.line}`}}>
       <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider grid gap-2 items-center" style={{color:C.grey,background:"#F4F4F2",gridTemplateColumns:gt,minWidth:"1000px"}}>
-        <span>Date</span><span>Doctor</span><span>Patient</span><span>Type</span><span className="text-right">Fee</span><span className="text-right">Disc</span><span className="text-right">Dr %</span><span className="text-right">Dr earn</span><span className="text-right">Go Doc</span><span>Status</span><span>Method</span></div>
-      {rows.map((r,i)=>(<div key={r.id} className="px-4 py-2.5 grid gap-2 items-center text-[12px]" style={{borderTop:i?`1px solid ${C.line}`:"none",gridTemplateColumns:gt,minWidth:"1000px"}}>
+        <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")} className="flex items-center gap-1 uppercase tracking-wider font-bold text-[11px] text-left" style={{color:C.ink}} title="Sort by date">Date <ArrowUpDown size={11} style={{opacity:0.7}}/><span className="normal-case tracking-normal" style={{color:C.grey}}>{sortDir==="asc"?"↑":"↓"}</span></button><span>Doctor</span><span>Patient</span><span>Type</span><span className="text-right">Fee</span><span className="text-right">Disc</span><span className="text-right">Dr %</span><span className="text-right">Dr earn</span><span className="text-right">Go Doc</span><span>Status</span><span>Method</span></div>
+      {sortedRows.map((r,i)=>(<div key={r.id} className="px-4 py-2.5 grid gap-2 items-center text-[12px]" style={{borderTop:i?`1px solid ${C.line}`:"none",gridTemplateColumns:gt,minWidth:"1000px"}}>
         <span style={{color:C.grey}}>{r.date}</span><span className="font-semibold truncate">{r.doctor}</span><span className="truncate">{r.patient}</span><span style={{color:C.ink2}}>{r.type}</span>
         <input type="number" value={r.fee} onChange={e=>updateFinance(r.id,{fee:+e.target.value})} className="w-full px-1.5 py-1 rounded-md text-right tabular-nums outline-none" style={{border:`1px solid ${C.line}`}}/>
         <input type="number" min="0" value={r.discount||0} onChange={e=>updateFinance(r.id,{discount:Math.max(0,+e.target.value)})} className="w-full px-1.5 py-1 rounded-md text-right tabular-nums outline-none" style={{border:`1px solid ${(r.discount||0)>0?"#8E5BB5":C.line}`,color:(r.discount||0)>0?"#8E5BB5":C.ink}}/>
