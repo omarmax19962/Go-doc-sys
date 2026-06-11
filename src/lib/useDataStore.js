@@ -679,6 +679,16 @@ export function useDataStore({ role, me }) {
     await supabase.from('finances').update({ paid_out: settled, paid_out_date: date }).in('id', ids)
   }, [])
 
+  // Remove a billing case (finance line) entirely. Used by the admin to clear
+  // mistaken or duplicate entries from the ledger.
+  const removeFinance = useCallback(async (id) => {
+    const f = finances.find((x) => x.id === id)
+    setFinances((fs) => fs.filter((x) => x.id !== id))
+    const { error } = await supabase.from('finances').delete().eq('id', id)
+    if (error) { console.error('removeFinance', error); return }
+    notify('admin', `Billing case removed: ${f?.patient || '—'}${f?.date ? ` (${f.date})` : ''}`, null, { view: 'finances' })
+  }, [finances, notify])
+
   // ---- EXPENSES (operational spend + marketing CAC) ----
   const addExpense = useCallback(async (e) => {
     const { data, error } = await supabase.from('expenses').insert(toExpense(e)).select().single()
@@ -992,7 +1002,7 @@ export function useDataStore({ role, me }) {
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
-    updateFinance, settleFinances, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
+    updateFinance, settleFinances, removeFinance, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,
     bookSession, rescheduleVisit, deleteVisit, approveVisit,
