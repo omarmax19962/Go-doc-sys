@@ -2433,26 +2433,36 @@ function Finances({finances,updateFinance,settleFinances,expenses=[],addExpense,
 }
 
 function Billing({finances,updateFinance,currency="EGP"}){
-  const[f,setF]=useState({from:"",to:"",doctor:"",status:"",method:""});
-  const[sortDir,setSortDir]=useState("desc");
-  const docOpts=[...new Set(finances.map(x=>x.doctor))];
-  const src=finances.filter(x=>(!(f.from||f.to)||inRange(x.date,f.from,f.to))&&(!f.doctor||x.doctor===f.doctor)&&(!f.status||x.status===f.status)&&(!f.method||x.method===f.method));
+  const[f,setF]=useState({from:"",to:"",doctor:"",status:"",method:"",type:"",patient:"",q:""});
+  const[sort,setSort]=useState({key:"date",dir:"desc"});
+  const docOpts=[...new Set(finances.map(x=>x.doctor).filter(Boolean))];
+  const typeOpts=[...new Set(finances.map(x=>x.type).filter(Boolean))];
+  const ql=(f.q||"").trim().toLowerCase();
+  const src=finances.filter(x=>(!(f.from||f.to)||inRange(x.date,f.from,f.to))
+    &&(!f.doctor||x.doctor===f.doctor)&&(!f.status||x.status===f.status)&&(!f.method||x.method===f.method)
+    &&(!f.type||x.type===f.type)&&(!f.patient||String(x.patient||"").toLowerCase().includes(f.patient.toLowerCase()))
+    &&(!ql||[x.doctor,x.patient,x.type,x.status,x.method,x.date].some(v=>String(v||"").toLowerCase().includes(ql))));
   // net = fee - discount; refunded/waived recognise no revenue or doctor earnings.
   const rows=src.map(x=>{const net=netFee(x);const eff=(x.status==="Refunded"||x.status==="Waived")?0:net;return{...x,net,eff,docEarn:eff*x.pct,godoc:eff*(1-x.pct)};});
-  // Date-sorted view for the ledger; tie-break by id so same-day rows stay stable.
-  const sortedRows=[...rows].sort((a,b)=>{const c=(a.date||"").localeCompare(b.date||"")||((a.id||0)-(b.id||0));return sortDir==="asc"?c:-c;});
+  // Sortable on any column; tie-break by id so equal rows stay stable.
+  const sortVal=(r,k)=>({date:r.date||"",doctor:(r.doctor||"").toLowerCase(),patient:(r.patient||"").toLowerCase(),type:(r.type||"").toLowerCase(),fee:r.fee||0,discount:r.discount||0,pct:r.pct||0,docEarn:r.docEarn||0,godoc:r.godoc||0,status:(r.status||"").toLowerCase(),method:(r.method||"").toLowerCase()}[k]);
+  const sortedRows=[...rows].sort((a,b)=>{const av=sortVal(a,sort.key),bv=sortVal(b,sort.key);let c=typeof av==="number"?av-bv:String(av).localeCompare(String(bv));if(!c)c=(a.id||0)-(b.id||0);return sort.dir==="asc"?c:-c;});
+  const toggleSort=k=>setSort(s=>s.key===k?{key:k,dir:s.dir==="asc"?"desc":"asc"}:{key:k,dir:k==="date"?"desc":"asc"});
+  const SortH=({k,label,align})=>(<button onClick={()=>toggleSort(k)} className={"flex items-center gap-1 uppercase tracking-wider font-bold text-[11px] "+(align==="right"?"justify-end":"text-left")} style={{color:sort.key===k?C.ink:C.grey}} title={"Sort by "+label}>{label}<ArrowUpDown size={10} style={{opacity:sort.key===k?0.9:0.35}}/>{sort.key===k&&<span className="normal-case tracking-normal" style={{color:C.grey}}>{sort.dir==="asc"?"↑":"↓"}</span>}</button>);
+  const colInp="w-full px-1.5 py-1 rounded-md text-[11px] outline-none bg-white";
   const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
   const byDoc=Object.values(rows.reduce((m,r)=>{(m[r.doctor]||=({doctor:r.doctor,sessions:0,rev:0,doc:0,go:0}));const o=m[r.doctor];o.sessions++;o.rev+=r.eff;o.doc+=r.docEarn;o.go+=r.godoc;return m;},{}));
   const cards=[["Sessions",rows.length,C.ink],["Gross billed",egp(sum("fee")),C.ink],["Discounts",egp(sum("discount")),"#8E5BB5"],["Net revenue",egp(sum("eff")),C.ink],["Doctor earnings",egp(sum("docEarn")),"#2E6E73"],["Go Doc earnings",egp(sum("godoc")),C.green]];
   const exportCSV=()=>{const head=["Date","Doctor","Patient","Type","Fee","Discount","Net","Dr %","Dr earn","Go Doc","Status","Method"];const body=sortedRows.map(r=>[r.date,r.doctor,r.patient,r.type,Math.round(r.fee),Math.round(r.discount||0),Math.round(r.net),Math.round(r.pct*100)+"%",Math.round(r.docEarn),Math.round(r.godoc),r.status,r.method]);const totals=["TOTAL","","","",Math.round(sum("fee")),Math.round(sum("discount")),Math.round(sum("net")),"",Math.round(sum("docEarn")),Math.round(sum("godoc")),"",""];downloadCSV(`godoc-billing-${new Date().toISOString().slice(0,10)}.csv`,[head,...body,totals]);};
   const gt="84px 1.2fr 1.1fr 76px 70px 64px 54px 84px 84px 100px 116px";
   return(<>
-    <FilterBar onClear={()=>setF({from:"",to:"",doctor:"",status:"",method:""})}>
+    <FilterBar onClear={()=>setF({from:"",to:"",doctor:"",status:"",method:"",type:"",patient:"",q:""})}>
       <DateF value={f.from} onChange={v=>setF(s=>({...s,from:v}))} label="From"/>
       <DateF value={f.to} onChange={v=>setF(s=>({...s,to:v}))} label="To"/>
-      <Sel value={f.doctor} onChange={v=>setF(s=>({...s,doctor:v}))} options={docOpts} label="Doctor"/>
-      <Sel value={f.status} onChange={v=>setF(s=>({...s,status:v}))} options={PAY_STATUS} label="Payment"/>
-      <Sel value={f.method} onChange={v=>setF(s=>({...s,method:v}))} options={PAY_METHOD} label="Method"/>
+      <div className="relative flex items-center">
+        <Search size={14} style={{position:"absolute",left:9,color:C.grey}}/>
+        <input value={f.q} onChange={e=>setF(s=>({...s,q:e.target.value}))} placeholder="Search doctor, patient, type…" className="pl-7 pr-2.5 py-2 rounded-lg text-[13px] outline-none bg-white" style={{border:`1px solid ${C.line}`,minWidth:"220px"}}/>
+      </div>
     </FilterBar>
     <div className="flex flex-wrap items-center gap-2 mb-3">
       <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold bg-white" style={{border:`1px solid ${C.line}`,color:C.ink}}><Download size={14}/>Export CSV</button>
@@ -2478,7 +2488,16 @@ function Billing({finances,updateFinance,currency="EGP"}){
     </div>
     <div className="bg-white rounded-2xl overflow-x-auto" style={{border:`1px solid ${C.line}`}}>
       <div className="px-4 py-3 text-[11px] font-bold uppercase tracking-wider grid gap-2 items-center" style={{color:C.grey,background:"#F4F4F2",gridTemplateColumns:gt,minWidth:"1000px"}}>
-        <button onClick={()=>setSortDir(d=>d==="asc"?"desc":"asc")} className="flex items-center gap-1 uppercase tracking-wider font-bold text-[11px] text-left" style={{color:C.ink}} title="Sort by date">Date <ArrowUpDown size={11} style={{opacity:0.7}}/><span className="normal-case tracking-normal" style={{color:C.grey}}>{sortDir==="asc"?"↑":"↓"}</span></button><span>Doctor</span><span>Patient</span><span>Type</span><span className="text-right">Fee</span><span className="text-right">Disc</span><span className="text-right">Dr %</span><span className="text-right">Dr earn</span><span className="text-right">Go Doc</span><span>Status</span><span>Method</span></div>
+        <SortH k="date" label="Date"/><SortH k="doctor" label="Doctor"/><SortH k="patient" label="Patient"/><SortH k="type" label="Type"/><SortH k="fee" label="Fee" align="right"/><SortH k="discount" label="Disc" align="right"/><SortH k="pct" label="Dr %" align="right"/><SortH k="docEarn" label="Dr earn" align="right"/><SortH k="godoc" label="Go Doc" align="right"/><SortH k="status" label="Status"/><SortH k="method" label="Method"/></div>
+      <div className="px-4 py-2 grid gap-2 items-center" style={{gridTemplateColumns:gt,minWidth:"1000px",borderTop:`1px solid ${C.line}`,background:"#FAFAF8"}}>
+        <span/>
+        <select value={f.doctor} onChange={e=>setF(s=>({...s,doctor:e.target.value}))} className={colInp} style={{border:`1px solid ${f.doctor?C.teal:C.line}`,color:f.doctor?C.ink:C.grey}}><option value="">All</option>{docOpts.map(d=><option key={d}>{d}</option>)}</select>
+        <input value={f.patient} onChange={e=>setF(s=>({...s,patient:e.target.value}))} placeholder="Search…" className={colInp} style={{border:`1px solid ${f.patient?C.teal:C.line}`}}/>
+        <select value={f.type} onChange={e=>setF(s=>({...s,type:e.target.value}))} className={colInp} style={{border:`1px solid ${f.type?C.teal:C.line}`,color:f.type?C.ink:C.grey}}><option value="">All</option>{typeOpts.map(t=><option key={t}>{t}</option>)}</select>
+        <span/><span/><span/><span/><span/>
+        <select value={f.status} onChange={e=>setF(s=>({...s,status:e.target.value}))} className={colInp} style={{border:`1px solid ${f.status?C.teal:C.line}`,color:f.status?C.ink:C.grey}}><option value="">All</option>{PAY_STATUS.map(s2=><option key={s2}>{s2}</option>)}</select>
+        <select value={f.method} onChange={e=>setF(s=>({...s,method:e.target.value}))} className={colInp} style={{border:`1px solid ${f.method?C.teal:C.line}`,color:f.method?C.ink:C.grey}}><option value="">All</option>{PAY_METHOD.map(m=><option key={m}>{m}</option>)}</select></div>
+      {sortedRows.length===0&&<div className="px-4 py-6 text-[12px]" style={{color:C.grey,minWidth:"1000px"}}>No rows match these filters.</div>}
       {sortedRows.map((r,i)=>(<div key={r.id} className="px-4 py-2.5 grid gap-2 items-center text-[12px]" style={{borderTop:i?`1px solid ${C.line}`:"none",gridTemplateColumns:gt,minWidth:"1000px"}}>
         <span style={{color:C.grey}}>{r.date}</span><span className="font-semibold truncate">{r.doctor}</span><span className="truncate">{r.patient}</span><span style={{color:C.ink2}}>{r.type}</span>
         <input type="number" value={r.fee} onChange={e=>updateFinance(r.id,{fee:+e.target.value})} className="w-full px-1.5 py-1 rounded-md text-right tabular-nums outline-none" style={{border:`1px solid ${C.line}`}}/>
