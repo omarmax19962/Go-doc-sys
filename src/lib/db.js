@@ -95,6 +95,8 @@ export const fromVisit = (r) => ({
   bookedBy: r.booked_by || 'patient',
   relativeName: r.relative_name || null,
   relativeRelation: r.relative_relation || null,
+  createdBy: r.created_by || 'admin',
+  approved: r.approved !== false,
 })
 export const toVisit = (v) => ({
   patient_id: v.patientId,
@@ -113,6 +115,8 @@ export const toVisit = (v) => ({
   booked_by: v.bookedBy || 'patient',
   relative_name: v.relativeName || null,
   relative_relation: v.relativeRelation || null,
+  created_by: v.createdBy || 'admin',
+  approved: v.approved !== false,
 })
 
 // ---- PACKAGES ----

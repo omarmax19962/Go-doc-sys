@@ -1228,7 +1228,7 @@ function AppWithData({ role, me, onSignOut }){
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, settleFinances, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
-    sendReminder, resolveReschedule, bookSession, rescheduleVisit, deleteVisit,
+    sendReminder, resolveReschedule, bookSession, rescheduleVisit, deleteVisit, approveVisit,
     setExerciseLib, setModalityLib, markRead,
   } = store;
   const pending = notes.filter(n=>n.state==="submitted").length;
@@ -1240,7 +1240,7 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1563,6 +1563,8 @@ function Dashboard({patients,visits,notes,finances,credits=[],doctors,tasks,name
   const unconfirmed=visits.filter(v=>dOf(v)&&(v.status==="scheduled"||v.status==="pending_confirmation")&&(v.date===todayStr||v.date===addD(1)));
   const leadsFollow=patients.filter(p=>(!doctor||p.doctor===doctor)&&(p.status==="follow_up"||p.status==="didnt_reply"||p.status==="lead"));
   const openTasks=(tasks||[]).filter(t=>t.status!=="done");
+  // Sessions a doctor added that still need the admin's approval.
+  const toApprove=visits.filter(v=>dOf(v)&&v.createdBy==="doctor"&&v.approved===false&&v.status!=="cancelled"&&v.status!=="rescheduled");
   // Patients whose prepaid credit wallet has gone negative (used more Paid sessions than topped up).
   const creditOverdue=patients.filter(p=>{
     if(doctor&&p.doctor!==doctor)return false;
@@ -1575,6 +1577,7 @@ function Dashboard({patients,visits,notes,finances,credits=[],doctors,tasks,name
     {k:"review",Icon:ClipboardCheck,color:C.amber,label:"Notes awaiting review",n:reviewQ.length,sub:"Approve or send back",go:()=>goTab("review")},
     {k:"red",Icon:AlertTriangle,color:C.red,label:"Red-flag notes",n:redFlags.length,sub:"Clinical attention needed",go:()=>goTab("review")},
     {k:"soap",Icon:FileText,color:"#B5462F",label:"SOAP missing",n:soapMissing.length,sub:"Completed visits not documented",go:()=>goTab("calendar")},
+    {k:"approve",Icon:Check,color:C.green,label:"Sessions to approve",n:toApprove.length,sub:"Doctor-added · awaiting your OK",go:()=>goTab("calendar")},
     {k:"resched",Icon:History,color:"#6B8CBE",label:"Reschedule requests",n:reschedReq.length,sub:"Patients asked to move a session",go:()=>goTab("calendar")},
     {k:"unconf",Icon:Clock,color:"#C99A2E",label:"Unconfirmed today / tomorrow",n:unconfirmed.length,sub:"Confirm or send a reminder",go:()=>goTab("calendar")},
     {k:"leads",Icon:Phone,color:C.teal,label:"Leads to follow up",n:leadsFollow.length,sub:"Lead · follow-up · no reply",go:()=>goTab("patients")},
@@ -1665,7 +1668,7 @@ function Dashboard({patients,visits,notes,finances,credits=[],doctors,tasks,name
   </>);
 }
 
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   // Notification deep-link: a tapped notification jumps to the relevant place.
@@ -1705,7 +1708,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
       {tab==="today"&&<Dashboard patients={patients} visits={visits} notes={notes} finances={finances} credits={credits} doctors={doctors} tasks={tasks} nameOf={nameOf} goTab={setTab} openPatient={id=>setViewP({id})} updateVisitStatus={updateVisitStatus}/>}
 
       {/* CALENDAR — operational multi-doctor view (§3.2) */}
-      {tab==="calendar"&&<AdminCalendar visits={visits} patients={patients} doctors={doctors} notes={notes} nameOf={nameOf} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} bookSession={bookSession}/>}
+      {tab==="calendar"&&<AdminCalendar visits={visits} patients={patients} doctors={doctors} notes={notes} nameOf={nameOf} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} approveVisit={approveVisit} bookSession={bookSession}/>}
 
       {/* PATIENTS — incl. assign-doctor + admin-only payment */}
       {tab==="patients"&&<>
@@ -2084,8 +2087,9 @@ function BookingModal({slot,doctors,patients,visits,fixedDoctor,fixedPatient,onC
 }
 
 /* ---------- EventPopover — admin click-through actions on a session ---------- */
-function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,onActionReschedule}){
+function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,onActionReschedule}){
   const v=ev.raw;if(!v)return null;
+  const doctorAdded=v.createdBy==="doctor";const needsApproval=doctorAdded&&v.approved===false;
   const[edate,setEdate]=useState(v.date||"");const[etime,setEtime]=useState(v.time&&v.time!=="—"?v.time:"");const[saved,setSaved]=useState(false);const[confirmDel,setConfirmDel]=useState(false);
   const dirty=(edate||"")!==(v.date||"")||(etime||"")!==((v.time&&v.time!=="—")?v.time:"");
   const saveDate=async()=>{await rescheduleVisit(v.id,{date:edate||null,time:etime||null});setSaved(true);setTimeout(()=>setSaved(false),1500);};
@@ -2098,6 +2102,11 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
       <div className="p-4 space-y-3">
         {!!v.date&&v.date<=new Date().toISOString().slice(0,10)&&v.status!=="no_show"&&<div className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1.5 rounded-lg" style={{background:v.soapFiled?C.green+"18":C.amber+"22",color:v.soapFiled?C.green:"#9a6a00"}}>{v.soapFiled?<><ClipboardCheck size={13}/> SOAP filed</>:<><AlertTriangle size={13}/> No SOAP filed for this session</>}</div>}
         <div className="text-[11px]" style={{color:C.ink2}}><span className="font-bold uppercase text-[10px]" style={{color:C.grey}}>Booked by</span> · {v.bookedBy==="relative"?`Relative — ${v.relativeName||"—"}${v.relativeRelation?` (${v.relativeRelation})`:""}`:"Patient"}</div>
+        <div className="flex items-center gap-1.5 text-[11px] flex-wrap" style={{color:C.ink2}}><span className="font-bold uppercase text-[10px]" style={{color:C.grey}}>Source</span> · {doctorAdded?`Added by ${v.doctorName||"doctor"}`:"Added by Admin"}
+          {doctorAdded&&(needsApproval
+            ?<span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:C.amber+"22",color:"#9a6a00"}}>Pending approval</span>
+            :<span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:C.green+"18",color:C.green}}>Approved ✓</span>)}</div>
+        {needsApproval&&approveVisit&&<button onClick={()=>{approveVisit(v.id);onClose();}} className="w-full py-2.5 rounded-lg text-[12px] font-bold flex items-center justify-center gap-1.5" style={{background:C.green,color:"#fff"}}><Check size={14}/>Approve this session</button>}
         {rescheduleVisit&&<div><div className="text-[10px] font-bold uppercase mb-1.5" style={{color:C.grey}}>Session date &amp; time</div>
           <div className="flex gap-1.5">
             <input type="date" value={edate} onChange={e=>setEdate(e.target.value)} className="flex-1 px-3 py-2 rounded-lg text-[13px] font-semibold outline-none" style={{border:`1px solid ${C.line}`,color:edate?C.ink:C.grey}}/>
@@ -2123,7 +2132,7 @@ function EventPopover({ev,nameOf,onClose,updateVisitStatus,sendReminder,resolveR
   </div>);
 }
 
-function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession}){
+function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession}){
   const[fDoc,setFDoc]=useState("");const[fStatus,setFStatus]=useState("");
   const[booking,setBooking]=useState(null);const[popover,setPopover]=useState(null);const[reschedAction,setReschedAction]=useState(null);
   const todayStr=new Date().toISOString().slice(0,10);
@@ -2134,7 +2143,9 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
   const yesterdayNoShows=visits.filter(v=>v.status==="no_show"&&v.date===dayStr(-1));
   const missingSoap=visits.filter(v=>v.status==="completed"&&!v.soapFiled&&v.date&&v.date<dayStr(-7));
   const rescheduleReqs=visits.filter(v=>v.rescheduleRequested);
+  const pendingApproval=visits.filter(v=>v.createdBy==="doctor"&&v.approved===false&&v.status!=="cancelled"&&v.status!=="rescheduled");
   const attention=[
+    ...pendingApproval.map(v=>({v,tag:"Doctor-added · approve",c:C.green})),
     ...rescheduleReqs.map(v=>({v,tag:"Reschedule requested",c:"#9B7BB8",note:v.rescheduleNote,range:(v.reschedulePrefFrom||v.reschedulePrefTo)?`${v.reschedulePrefFrom||"…"} → ${v.reschedulePrefTo||"…"}`:""})),
     ...unconfirmedSoon.map(v=>({v,tag:"Unconfirmed < 24h",c:"#C99A2E"})),
     ...yesterdayNoShows.map(v=>({v,tag:"Yesterday no-show",c:C.red})),
@@ -2144,7 +2155,7 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
   const events=useMemo(()=>visits
     .filter(v=>v.status!=="cancelled"&&v.status!=="rescheduled"&&(!fDoc||v.doctorName===fDoc)&&(!fStatus||v.status===fStatus))
     .map(v=>({id:v.id,date:v.date,start:parseHM(v.time),durationMin:v.durationMin||45,
-      title:nameOf(v.patientId),subtitle:`${v.doctorName} · ${VISIT_STATUS_LABEL[v.status]||v.status}`,
+      title:nameOf(v.patientId),subtitle:`${v.doctorName} · ${(v.createdBy==="doctor"&&v.approved===false)?"⏳ Needs approval":(VISIT_STATUS_LABEL[v.status]||v.status)}`,
       color:docColor(v.doctorName,doctors),faded:v.status==="completed"||v.status==="no_show",
       noSoap:!v.soapFiled&&!!v.date&&v.date<=todayStr&&v.status!=="no_show",raw:v}))
   ,[visits,fDoc,fStatus,doctors,nameOf,todayStr]);
@@ -2165,6 +2176,7 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
           <div className="flex items-center gap-2 text-[13px]"><span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0" style={{background:c+"22",color:c}}>{tag}</span>
             <span className="font-semibold">{nameOf(v.patientId)}</span><span style={{color:C.grey}}>{v.doctorName} · {v.date||"—"}{note?` · "${note}"`:""}{range?` · prefers ${range}`:""}</span></div>
           <div className="flex items-center gap-1.5">
+            {tag==="Doctor-added · approve"&&approveVisit&&<button onClick={()=>approveVisit(v.id)} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg flex items-center gap-1" style={{background:C.green,color:"#fff"}}><Check size={12}/>Approve</button>}
             {tag==="Reschedule requested"&&<button onClick={()=>setReschedAction(v)} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.ink,color:"#fff"}}>Action</button>}
             {tag==="Unconfirmed < 24h"&&<button onClick={()=>updateVisitStatus(v.id,"confirmed")} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.teal,color:C.ink}}>Confirm</button>}
             {tag==="Yesterday no-show"&&<button onClick={()=>updateVisitStatus(v.id,"scheduled")} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Rebook</button>}
@@ -2178,7 +2190,7 @@ function AdminCalendar({visits,patients,doctors,notes,nameOf,updateVisitStatus,s
       onEventClick={ev=>setPopover(ev)}/>
 
     {booking&&<BookingModal slot={booking} doctors={doctors} patients={patients} visits={visits} onClose={()=>setBooking(null)} onBook={onBook}/>}
-    {popover&&<EventPopover ev={popover} nameOf={nameOf} onClose={()=>setPopover(null)} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} onActionReschedule={setReschedAction}/>}
+    {popover&&<EventPopover ev={popover} nameOf={nameOf} onClose={()=>setPopover(null)} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} approveVisit={approveVisit} onActionReschedule={setReschedAction}/>}
     {reschedAction&&<RescheduleActionModal v={reschedAction} patientName={nameOf(reschedAction.patientId)} onClose={()=>setReschedAction(null)} onResolve={async(vid,date,time)=>{await resolveReschedule(vid,date,time);setReschedAction(null);}}/>}
   </div>);
 }
@@ -3610,7 +3622,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
       {tab==="calendar"&&<div className="p-3">
         <button onClick={()=>setBooking({date:ymd(new Date()),time:"09:00"})} className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-[14px] text-white" style={{background:C.ink}}><Plus size={16}/>Add patient to slot</button>
         <TimeGrid defaultView="day" compact
-          events={visits.filter(v=>v.doctorName===me&&v.status!=="cancelled"&&v.status!=="rescheduled").map(v=>({id:v.id,date:v.date,start:parseHM(v.time),durationMin:v.durationMin||45,title:pOf(v.patientId)?.name||"—",subtitle:VISIT_TYPE_LABEL[v.type]||v.type,color:C.teal,faded:v.status==="completed"||v.status==="no_show",noSoap:!v.soapFiled&&!!v.date&&v.date<=ymd(new Date())&&v.status!=="no_show",raw:v}))}
+          events={visits.filter(v=>v.doctorName===me&&v.status!=="cancelled"&&v.status!=="rescheduled").map(v=>({id:v.id,date:v.date,start:parseHM(v.time),durationMin:v.durationMin||45,title:pOf(v.patientId)?.name||"—",subtitle:(v.createdBy==="doctor"&&v.approved===false)?"⏳ Pending admin approval":(VISIT_TYPE_LABEL[v.type]||v.type),color:C.teal,faded:v.status==="completed"||v.status==="no_show",noSoap:!v.soapFiled&&!!v.date&&v.date<=ymd(new Date())&&v.status!=="no_show",raw:v}))}
           onSlotClick={(date,time)=>setBooking({date,time})}
           onEventClick={ev=>{const v=ev.raw;const p=pOf(v.patientId);if(p)setViewP(p);}}/>
       </div>}

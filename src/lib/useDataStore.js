@@ -382,7 +382,8 @@ export function useDataStore({ role, me }) {
     }
     if (!pid) return
     const n = Math.max(1, Math.min(60, Number(count) || 1))
-    const base = { patient_id: pid, doctor_name: doctorName, type, time: time || '—', date: date || null, duration_min: durationMin, status: 'scheduled', booked_by: bookedBy || 'patient', relative_name: bookedBy === 'relative' ? (relativeName || null) : null, relative_relation: bookedBy === 'relative' ? (relativeRelation || null) : null }
+    const isDoctorAdded = booker === 'doctor'
+    const base = { patient_id: pid, doctor_name: doctorName, type, time: time || '—', date: date || null, duration_min: durationMin, status: 'scheduled', booked_by: bookedBy || 'patient', relative_name: bookedBy === 'relative' ? (relativeName || null) : null, relative_relation: bookedBy === 'relative' ? (relativeRelation || null) : null, created_by: isDoctorAdded ? 'doctor' : 'admin', approved: !isDoctorAdded }
     // Only the first session keeps a precise date when bulk-creating; the rest are left undated to schedule later.
     const rows = Array.from({ length: n }, (_, i) => (i === 0 ? base : { ...base, date: null, time: '—' }))
     const { data: vd, error: verr } = await supabase.from('visits').insert(rows).select()
@@ -402,12 +403,16 @@ export function useDataStore({ role, me }) {
       if (ferr) console.warn('bookSession finance', ferr)
       else if (fdata) setFinances((fs) => [...fs, ...fdata.map(fromFinance)])
     }
-    if (n > 1) {
+    if (isDoctorAdded) {
+      // Doctor-added session — admin must approve it before it counts.
+      if (n > 1) notify('admin', `Approval needed: ${doctorName || 'A doctor'} added ${n} sessions for ${pname}${date ? ` (1st on ${date})` : ''}`, null, { patientId: pid })
+      else notify('admin', `Approval needed: ${doctorName || 'A doctor'} added a session for ${pname} (${date || '—'} ${time || ''})`, null, { patientId: pid })
+    } else if (n > 1) {
       notify('admin', `${n} sessions booked: ${pname} → ${doctorName || '—'}${date ? ` (1st on ${date})` : ' (dates open)'}`, null, { patientId: pid })
-      if (doctorName && booker !== 'doctor') notify('doctor', `${n} sessions booked: ${pname}`, doctorName, { patientId: pid })
+      if (doctorName) notify('doctor', `${n} sessions booked: ${pname}`, doctorName, { patientId: pid })
     } else {
       notify('admin', `Session booked: ${pname} → ${doctorName || '—'} (${date || '—'} ${time || ''})`, null, { patientId: pid })
-      if (doctorName && booker !== 'doctor') notify('doctor', `New session booked: ${pname} (${date || '—'} ${time || ''})`, doctorName, { patientId: pid })
+      if (doctorName) notify('doctor', `New session booked: ${pname} (${date || '—'} ${time || ''})`, doctorName, { patientId: pid })
     }
   }, [patients, config, notify])
 
@@ -447,6 +452,17 @@ export function useDataStore({ role, me }) {
     notify('admin', `Session deleted: ${pname}${v.date ? ` (${v.date})` : ''}${by === 'doctor' ? ` — by ${v.doctorName}` : ''}`, null, { patientId: v.patientId })
   }, [visits, finances, packages, patients, notify])
 
+  // Admin approves a doctor-added session, clearing its pending-approval flag
+  // and letting the doctor know it's confirmed.
+  const approveVisit = useCallback(async (vid) => {
+    const v = visits.find((x) => x.id === vid)
+    if (!v) return
+    setVisits((vs) => vs.map((x) => x.id === vid ? { ...x, approved: true } : x))
+    await supabase.from('visits').update({ approved: true }).eq('id', vid)
+    const pname = patients.find((p) => p.id === v.patientId)?.name || '—'
+    if (v.doctorName) notify('doctor', `Session approved: ${pname}${v.date ? ` (${v.date}${v.time && v.time !== '—' ? ' ' + v.time : ''})` : ''}`, v.doctorName, { patientId: v.patientId })
+  }, [visits, patients, notify])
+
   const submitNote = useCallback(async (n) => {
     const today = new Date().toISOString().slice(0, 10)
     // The doctor sets the date the session actually took place. created_at
@@ -472,12 +488,15 @@ export function useDataStore({ role, me }) {
       if (vd) { setVisits((vs) => [...vs, fromVisit(vd)]); completedVisitId = vd.id }
     }
 
-    // next session?
+    // next session? (doctor-added → needs admin approval)
     if (n.nextSessionDate) {
       const { data: nv } = await supabase.from('visits').insert({
-        patient_id: n.patientId, doctor_name: n.doctorName, type: 'Treatment', time: n.nextSessionTime || '—', date: n.nextSessionDate, status: 'scheduled',
+        patient_id: n.patientId, doctor_name: n.doctorName, type: 'Treatment', time: n.nextSessionTime || '—', date: n.nextSessionDate, status: 'scheduled', created_by: 'doctor', approved: false,
       }).select().single()
-      if (nv) setVisits((vs) => [...vs, fromVisit(nv)])
+      if (nv) {
+        setVisits((vs) => [...vs, fromVisit(nv)])
+        notify('admin', `Approval needed: ${n.doctorName} scheduled a follow-up for ${n.patientName} (${n.nextSessionDate} ${n.nextSessionTime || ''})`, null, { patientId: n.patientId })
+      }
     }
 
     // patient.dx default + activate
@@ -976,7 +995,7 @@ export function useDataStore({ role, me }) {
     updateFinance, settleFinances, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,
-    bookSession, rescheduleVisit, deleteVisit,
+    bookSession, rescheduleVisit, deleteVisit, approveVisit,
     addTask, updateTask, removeTask,
     setExerciseLib: setExerciseLibPersisted,
     setModalityLib: setModalityLibPersisted,
