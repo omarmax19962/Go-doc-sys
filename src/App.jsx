@@ -5,7 +5,7 @@ import {
   CircleCheck, AlertTriangle, MessageSquare, CornerUpLeft, Trash2, Activity, Wallet,
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
   Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle, Eye, Image as ImageIcon,
-  ListChecks, Lightbulb, GripVertical, BellRing
+  ListChecks, Lightbulb, GripVertical, BellRing, TrendingUp
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
@@ -1512,6 +1512,150 @@ function TasksTab({tasks,addTask,updateTask,removeTask}){
   </div>);
 }
 
+/* ===== OVERVIEW DASHBOARD — at-a-glance decision center ===== */
+function DashKPI({label,value,sub,color,Icon,onClick}){
+  return(<button onClick={onClick} disabled={!onClick} className="bg-white rounded-2xl p-4 text-left flex flex-col gap-1 disabled:cursor-default transition-shadow" style={{border:`1px solid ${C.line}`}}>
+    <div className="flex items-center justify-between"><span className="text-[12px]" style={{color:C.grey}}>{label}</span>{Icon&&<Icon size={15} color={color||C.grey}/>}</div>
+    <div className="text-[23px] font-bold leading-tight" style={{color:color||C.ink}}>{value}</div>
+    {sub&&<div className="text-[11px]" style={{color:C.grey}}>{sub}</div>}
+  </button>);
+}
+
+function Dashboard({patients,visits,notes,finances,doctors,tasks,nameOf,goTab,openPatient,updateVisitStatus}){
+  const todayStr=ymd(new Date());
+  const addD=(n)=>{const d=new Date();d.setDate(d.getDate()+n);return ymd(d);};
+  const monthStart=()=>{const d=new Date();return ymd(new Date(d.getFullYear(),d.getMonth(),1));};
+  const[range,setRange]=useState("today");
+  const[cf,setCf]=useState({from:"",to:""});
+  const[doctor,setDoctor]=useState("");
+  const[zone,setZone]=useState("");
+  const presets=[["today","Today"],["7d","7 days"],["30d","30 days"],["month","This month"],["all","All time"],["custom","Custom"]];
+  const {from,to}= range==="today"?{from:todayStr,to:todayStr}
+    : range==="7d"?{from:addD(-6),to:todayStr}
+    : range==="30d"?{from:addD(-29),to:todayStr}
+    : range==="month"?{from:monthStart(),to:todayStr}
+    : range==="all"?{from:"",to:""}
+    : {from:cf.from,to:cf.to};
+  const rangeLabel=range==="all"?"all time":range==="custom"?((from||to)?`${from||"…"} → ${to||"…"}`:"custom range"):presets.find(p=>p[0]===range)[1].toLowerCase();
+  const dOf=v=>!doctor||v.doctorName===doctor;
+
+  const vis=visits.filter(v=>dOf(v)&&inRange(v.date,from,to));
+  const fin=finances.filter(x=>(!doctor||x.doctor===doctor)&&inRange(x.date,from,to));
+  const pts=patients.filter(p=>(!zone||p.zone===zone)&&(!doctor||p.doctor===doctor));
+  const newPts=pts.filter(p=>p.createdAt&&inRange(String(p.createdAt).slice(0,10),from,to));
+  const newLeads=newPts.filter(p=>isLeadStatus(p.status)).length;
+
+  const effv=x=>(x.status==="Refunded"||x.status==="Waived")?0:netFee(x);
+  const netRev=fin.reduce((a,x)=>a+effv(x),0);
+  const goEarn=fin.reduce((a,x)=>a+effv(x)*(1-(x.pct||0)),0);
+  const unpaidRows=finances.filter(x=>(!doctor||x.doctor===doctor)&&(x.status==="Pending"||x.status==="Partial"));
+  const outstanding=unpaidRows.reduce((a,x)=>a+netFee(x),0);
+
+  const completed=vis.filter(v=>v.status==="completed").length;
+  const upcoming=visits.filter(v=>dOf(v)&&v.date&&v.date>=todayStr&&["scheduled","pending_confirmation","confirmed"].includes(v.status)).length;
+  const visToday=visits.filter(v=>dOf(v)&&v.date===todayStr).length;
+
+  // ---- decision items (open actions; respect doctor filter) ----
+  const reviewQ=notes.filter(n=>(n.state==="submitted"||n.state==="under_review")&&(!doctor||n.doctorName===doctor));
+  const redFlags=reviewQ.filter(n=>n.redFlag);
+  const soapMissing=visits.filter(v=>dOf(v)&&v.status==="completed"&&!v.soapFiled&&v.date&&v.date<=todayStr);
+  const reschedReq=visits.filter(v=>dOf(v)&&v.rescheduleRequested);
+  const unconfirmed=visits.filter(v=>dOf(v)&&(v.status==="scheduled"||v.status==="pending_confirmation")&&(v.date===todayStr||v.date===addD(1)));
+  const leadsFollow=patients.filter(p=>(!doctor||p.doctor===doctor)&&(p.status==="follow_up"||p.status==="didnt_reply"||p.status==="lead"));
+  const openTasks=(tasks||[]).filter(t=>t.status!=="done");
+  const items=[
+    {k:"review",Icon:ClipboardCheck,color:C.amber,label:"Notes awaiting review",n:reviewQ.length,sub:"Approve or send back",go:()=>goTab("review")},
+    {k:"red",Icon:AlertTriangle,color:C.red,label:"Red-flag notes",n:redFlags.length,sub:"Clinical attention needed",go:()=>goTab("review")},
+    {k:"soap",Icon:FileText,color:"#B5462F",label:"SOAP missing",n:soapMissing.length,sub:"Completed visits not documented",go:()=>goTab("calendar")},
+    {k:"resched",Icon:History,color:"#6B8CBE",label:"Reschedule requests",n:reschedReq.length,sub:"Patients asked to move a session",go:()=>goTab("calendar")},
+    {k:"unconf",Icon:Clock,color:"#C99A2E",label:"Unconfirmed today / tomorrow",n:unconfirmed.length,sub:"Confirm or send a reminder",go:()=>goTab("calendar")},
+    {k:"leads",Icon:Phone,color:C.teal,label:"Leads to follow up",n:leadsFollow.length,sub:"Lead · follow-up · no reply",go:()=>goTab("patients")},
+    {k:"pay",Icon:Wallet,color:"#D9714E",label:"Outstanding payments",n:unpaidRows.length,sub:outstanding?`${egp(outstanding)} pending`:"",go:()=>goTab("finances")},
+    {k:"tasks",Icon:ListChecks,color:C.ink,label:"Open tasks",n:openTasks.length,sub:"Team to-dos",go:()=>goTab("tasks")},
+  ].filter(x=>x.n>0);
+
+  // ---- charts ----
+  const trend=Array.from({length:14},(_,i)=>{const ds=addD(-(13-i));return{d:new Date(ds+"T00:00:00").toLocaleDateString("en-GB",{day:"2-digit",month:"short"}),v:visits.filter(v=>dOf(v)&&v.date===ds).length};});
+  const byDoctor=doctors.filter(d=>!doctor||d.name===doctor).map(d=>({name:(d.name.split(" ")[1]||d.name),v:vis.filter(v=>v.doctorName===d.name).length}));
+  const statusMix=STATUSES.map(s=>({name:STATUS_LABEL[s],key:s,v:pts.filter(p=>p.status===s).length})).filter(x=>x.v);
+  const sortKey=v=>(v.date||"9999-99-99")+"#"+(parseHM(v.time)!=null?String(parseHM(v.time)).padStart(4,"0"):"9999");
+  const sched=vis.slice().sort((a,b)=>sortKey(a).localeCompare(sortKey(b)));
+  const docNames=doctors.map(d=>d.name);
+
+  return(<>
+    {/* GLOBAL FILTERS */}
+    <div className="bg-white rounded-2xl px-3 py-3 mb-4" style={{border:`1px solid ${C.line}`}}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {presets.map(([k,l])=>(<button key={k} onClick={()=>setRange(k)} className="px-3 py-1.5 rounded-full text-[12px] font-bold" style={{background:range===k?C.ink:"#F4FBFC",color:range===k?"#fff":C.ink2,border:`1px solid ${range===k?C.ink:C.line}`}}>{l}</button>))}
+        <span className="mx-1 w-px h-5" style={{background:C.line}}/>
+        <Sel value={doctor} onChange={setDoctor} options={docNames} label="All doctors"/>
+        <Sel value={zone} onChange={setZone} options={ZONES} label="All zones"/>
+        {(doctor||zone||range!=="today")&&<button onClick={()=>{setRange("today");setDoctor("");setZone("");setCf({from:"",to:""});}} className="text-[12px] font-semibold px-2.5 py-1.5 rounded-lg" style={{color:C.grey}}>Reset</button>}
+      </div>
+      {range==="custom"&&<div className="flex flex-wrap items-center gap-2 mt-2">
+        <DateF value={cf.from} onChange={v=>setCf(s=>({...s,from:v}))} label="From"/>
+        <DateF value={cf.to} onChange={v=>setCf(s=>({...s,to:v}))} label="To"/>
+      </div>}
+      <div className="text-[11px] mt-2" style={{color:C.grey}}>Showing <b style={{color:C.ink2}}>{rangeLabel}</b>{doctor?` · ${doctor}`:""}{zone?` · ${zone}`:""}</div>
+    </div>
+
+    {/* KPIs */}
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+      <DashKPI label="Visits" value={vis.length} sub={`${visToday} today`} color={C.ink} Icon={CalendarDays} onClick={()=>goTab("calendar")}/>
+      <DashKPI label="Completed" value={completed} sub={vis.length?`${Math.round(completed/vis.length*100)}% of range`:"—"} color={C.green} Icon={CircleCheck}/>
+      <DashKPI label="Upcoming" value={upcoming} sub="from today" color={"#2E6E73"} Icon={Clock} onClick={()=>goTab("calendar")}/>
+      <DashKPI label="Net revenue" value={egp(netRev)} sub={`Go Doc ${egp(goEarn)}`} color={C.ink} Icon={Wallet} onClick={()=>goTab("finances")}/>
+      <DashKPI label="Outstanding" value={egp(outstanding)} sub={`${unpaidRows.length} unpaid`} color="#D9714E" Icon={TrendingDown} onClick={()=>goTab("finances")}/>
+      <DashKPI label="New patients" value={newPts.length} sub={`${newLeads} leads`} color={C.teal} Icon={Users} onClick={()=>goTab("patients")}/>
+    </div>
+
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+      {/* DECISION CENTER */}
+      <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
+        <h3 className="text-[13px] font-bold mb-3 flex items-center gap-2" style={{fontFamily:HEAD}}><AlertTriangle size={15} color={C.amber}/>Needs attention</h3>
+        {items.length===0?<div className="text-[13px] py-8 text-center" style={{color:C.grey}}>All clear — nothing needs action right now.</div>
+        :<div className="space-y-2">{items.map(it=>(<button key={it.k} onClick={it.go} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left" style={{background:"#F8FAFB",border:`1px solid ${C.line}`}}>
+          <span className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{background:it.color+"22"}}><it.Icon size={16} color={it.color}/></span>
+          <div className="flex-1 min-w-0"><div className="text-[13px] font-semibold" style={{color:C.ink}}>{it.label}</div>{it.sub&&<div className="text-[11px] truncate" style={{color:C.grey}}>{it.sub}</div>}</div>
+          <span className="text-[15px] font-bold tabular-nums" style={{color:it.color}}>{it.n}</span>
+          <ChevronRight size={16} color={C.grey}/>
+        </button>))}</div>}
+      </div>
+      {/* SESSIONS TREND */}
+      <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
+        <h3 className="text-[13px] font-bold mb-3 flex items-center gap-2" style={{fontFamily:HEAD}}><TrendingUp size={15} color={C.teal}/>Sessions · last 14 days</h3>
+        <ResponsiveContainer width="100%" height={170}><AreaChart data={trend}><defs><linearGradient id="dashGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.teal} stopOpacity={0.5}/><stop offset="100%" stopColor={C.teal} stopOpacity={0}/></linearGradient></defs><XAxis dataKey="d" tick={{fontSize:10,fill:C.grey}} axisLine={false} tickLine={false} interval={2}/><YAxis allowDecimals={false} tick={{fontSize:11,fill:C.grey}} axisLine={false} tickLine={false} width={20}/><Tooltip/><Area type="monotone" dataKey="v" stroke={C.teal} strokeWidth={2} fill="url(#dashGrad)"/></AreaChart></ResponsiveContainer>
+      </div>
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
+        <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:HEAD}}>Visits by doctor</h3>
+        <ResponsiveContainer width="100%" height={160}><BarChart data={byDoctor}><XAxis dataKey="name" tick={{fontSize:11,fill:C.grey}} axisLine={false} tickLine={false}/><YAxis allowDecimals={false} tick={{fontSize:11,fill:C.grey}} axisLine={false} tickLine={false} width={20}/><Tooltip/><Bar dataKey="v" radius={[6,6,0,0]} fill={C.teal}/></BarChart></ResponsiveContainer>
+      </div>
+      <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
+        <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:HEAD}}>Patient status mix</h3>
+        {statusMix.length?<div className="flex items-center gap-4"><ResponsiveContainer width="55%" height={160}><PieChart><Pie data={statusMix} dataKey="v" nameKey="name" innerRadius={40} outerRadius={64} paddingAngle={3}>{statusMix.map(s=><Cell key={s.key} fill={statusColor[s.key]}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer>
+          <div className="space-y-1.5">{statusMix.map(s=><div key={s.key} className="flex items-center gap-2 text-[12px]"><span className="w-3 h-3 rounded-sm" style={{background:statusColor[s.key]}}/>{s.name}<b className="ml-1">{s.v}</b></div>)}</div></div>:<div className="text-[13px] py-8 text-center" style={{color:C.grey}}>No patients in scope.</div>}
+      </div>
+    </div>
+
+    {/* SCHEDULE */}
+    <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
+      <div className="px-5 py-3 flex items-center justify-between" style={{background:"#F4F4F2"}}><span className="text-[12px] font-bold uppercase tracking-wider" style={{color:C.grey}}>Schedule · {rangeLabel}</span><span className="text-[12px] font-semibold" style={{color:C.grey}}>{sched.length} visit{sched.length===1?"":"s"}</span></div>
+      {sched.length===0&&<div className="px-5 py-5 text-[13px]" style={{color:C.grey}}>No visits in this range.</div>}
+      {sched.slice(0,40).map((v,i)=>(<div key={v.id} className="px-5 py-3 flex items-center justify-between gap-3" style={{borderTop:i?`1px solid ${C.line}`:"none"}}>
+        <div className="flex items-center gap-3 min-w-0"><div className="text-right shrink-0" style={{width:84}}><div className="text-[12px] font-bold tabular-nums" style={{color:C.ink}}>{v.date||"—"}</div><div className="text-[11px]" style={{color:C.grey}}>{to12(v.time)||"—"}</div></div>
+          <button onClick={()=>openPatient(v.patientId)} className="min-w-0 text-left"><div className="font-semibold truncate flex items-center gap-1.5" style={{color:C.ink}}>{nameOf(v.patientId)}{v.status==="completed"&&<span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background:v.soapFiled?C.green+"22":C.amber+"22",color:v.soapFiled?C.green:"#9a6a00"}}>{v.soapFiled?"SOAP":"No SOAP"}</span>}</div>
+            <div className="text-[12px] truncate" style={{color:C.grey}}>{v.doctorName} · {VISIT_TYPE_LABEL[v.type]||v.type}</div></button></div>
+        <select value={v.status} onChange={e=>updateVisitStatus(v.id,e.target.value)} className="text-[11px] font-semibold px-2 py-1 rounded-full outline-none cursor-pointer shrink-0" style={{background:visitStatusColor[v.status]+"22",color:visitStatusColor[v.status],border:`1px solid ${visitStatusColor[v.status]}44`}}>
+          {VISIT_STATUSES.map(s=><option key={s} value={s} style={{background:"#fff",color:C.ink}}>{VISIT_STATUS_LABEL[s]}</option>)}
+        </select></div>))}
+      {sched.length>40&&<div className="px-5 py-3 text-[12px] text-center" style={{color:C.grey}}>Showing first 40 · narrow the range to see more.</div>}
+    </div>
+  </>);
+}
+
 function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
@@ -1521,19 +1665,15 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
   const tabs=[["today","Today",LayoutGrid],["calendar","Calendar",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["tasks","Tasks",ListChecks],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
   const openTasks=(tasks||[]).filter(t=>t.status!=="done").length;
-  const statusMix=STATUSES.map(s=>({name:STATUS_LABEL[s],key:s,v:patients.filter(p=>p.status===s).length})).filter(x=>x.v);
-  const byDoctorVisits=doctors.map(d=>({name:(d.name.split(" ")[1]||d.name),v:visits.filter(v=>v.doctorName===d.name).length}));
   const docNames=doctors.map(d=>d.name);
 
   /* ---- filters ---- */
-  const[tF,setTF]=useState({doctor:"",status:"",type:"",from:"",to:""});
   const[pF,setPF]=useState({q:"",status:"",doctor:"",zone:"",kind:"all"});
   const[rF,setRF]=useState({doctor:"",type:"",red:""});
   const[hoverP,setHoverP]=useState(null);
   const[selPts,setSelPts]=useState(()=>new Set());
   const[confirmBulk,setConfirmBulk]=useState(null); // {ids, label} | null
   const togglePt=id=>setSelPts(s=>{const n=new Set(s);n.has(id)?n.delete(id):n.add(id);return n;});
-  const fVisits=visits.filter(v=>(!tF.doctor||v.doctorName===tF.doctor)&&(!tF.status||v.status===tF.status)&&(!tF.type||v.type===tF.type)&&(!(tF.from||tF.to)||inRange(v.date,tF.from,tF.to)));
   const fPatients=patients.filter(p=>(!pF.q||p.name.toLowerCase().includes(pF.q.toLowerCase()))&&(!pF.status||p.status===pF.status)&&(!pF.doctor||p.doctor===pF.doctor)&&(!pF.zone||p.zone===pF.zone)&&(pF.kind==="all"||(pF.kind==="leads"?isLeadStatus(p.status):!isLeadStatus(p.status))));
   const leadCount=patients.filter(p=>isLeadStatus(p.status)).length, patientCount=patients.length-leadCount;
   const fQueue=queue.filter(n=>(!rF.doctor||n.doctorName===rF.doctor)&&(!rF.type||n.type===rF.type)&&(!rF.red||n.redFlag));
@@ -1552,42 +1692,8 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     </div>
 
     <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-      {/* TODAY — KPIs + at-a-glance charts, then the visit list */}
-      {tab==="today"&&<>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          {[["Visits today",visits.length,C.ink],["Completed",visits.filter(v=>v.status==="completed").length,C.green],["In queue",pending,C.amber],["Active patients",patients.filter(p=>p.status==="active").length,"#2E6E73"]].map(([l,n,c])=>(
-            <div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[28px] font-bold mt-0.5" style={{color:c}}>{n}</div></div>))}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-            <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:HEAD}}>Visits by doctor</h3>
-            <ResponsiveContainer width="100%" height={150}><BarChart data={byDoctorVisits}><XAxis dataKey="name" tick={{fontSize:11,fill:C.grey}} axisLine={false} tickLine={false}/><YAxis allowDecimals={false} tick={{fontSize:11,fill:C.grey}} axisLine={false} tickLine={false} width={20}/><Bar dataKey="v" radius={[6,6,0,0]} fill={C.teal}/></BarChart></ResponsiveContainer>
-          </div>
-          <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
-            <h3 className="text-[13px] font-bold mb-3" style={{fontFamily:HEAD}}>Patient status mix</h3>
-            <div className="flex items-center gap-4"><ResponsiveContainer width="55%" height={150}><PieChart><Pie data={statusMix} dataKey="v" nameKey="name" innerRadius={38} outerRadius={62} paddingAngle={3}>{statusMix.map(s=><Cell key={s.key} fill={statusColor[s.key]}/>)}</Pie><Tooltip/></PieChart></ResponsiveContainer>
-              <div className="space-y-1.5">{statusMix.map(s=><div key={s.key} className="flex items-center gap-2 text-[12px]"><span className="w-3 h-3 rounded-sm" style={{background:statusColor[s.key]}}/>{s.name}<b className="ml-1">{s.v}</b></div>)}</div></div>
-          </div>
-        </div>
-        <FilterBar onClear={()=>setTF({doctor:"",status:"",type:"",from:"",to:""})}>
-          <Sel value={tF.doctor} onChange={v=>setTF(s=>({...s,doctor:v}))} options={docNames} label="Doctor"/>
-          <Sel value={tF.status} onChange={v=>setTF(s=>({...s,status:v}))} options={[...new Set(visits.map(v=>v.status))]} label="Status"/>
-          <Sel value={tF.type} onChange={v=>setTF(s=>({...s,type:v}))} options={["Assessment","Treatment","Discharge","Follow-up"]} label="Type"/>
-          <DateF value={tF.from} onChange={v=>setTF(s=>({...s,from:v}))} label="From"/>
-          <DateF value={tF.to} onChange={v=>setTF(s=>({...s,to:v}))} label="To"/>
-        </FilterBar>
-        <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
-          {fVisits.length===0&&<div className="px-5 py-4 text-[13px]" style={{color:C.grey}}>No visits match these filters.</div>}
-          {fVisits.map((v,i)=>(<div key={v.id} className="px-5 py-4 flex items-center justify-between" style={{borderTop:i?`1px solid ${C.line}`:"none"}}>
-            <div className="flex items-center gap-3"><span className="font-bold tabular-nums">{v.date||to12(v.time)}</span>
-              <div><div className="font-semibold flex items-center gap-1.5">{nameOf(v.patientId)}
-                {v.status==="completed"&&<span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{background:v.soapFiled?C.green+"22":C.amber+"22",color:v.soapFiled?C.green:"#9a6a00"}}>{v.soapFiled?"SOAP filed":"SOAP missing"}</span>}</div>
-                <div className="text-[12px]" style={{color:C.grey}}>{v.doctorName} · {VISIT_TYPE_LABEL[v.type]||v.type}{v.status==="cancelled"&&v.cancelledBy?` · cancelled by ${v.cancelledBy}`:""}</div></div></div>
-            <select value={v.status} onChange={e=>updateVisitStatus(v.id,e.target.value)} className="text-[11px] font-semibold px-2 py-1 rounded-full outline-none cursor-pointer" style={{background:visitStatusColor[v.status]+"22",color:visitStatusColor[v.status],border:`1px solid ${visitStatusColor[v.status]}44`}}>
-              {VISIT_STATUSES.map(s=><option key={s} value={s} style={{background:"#fff",color:C.ink}}>{VISIT_STATUS_LABEL[s]}</option>)}
-            </select></div>))}
-        </div>
-      </>}
+      {/* TODAY — overview dashboard / decision center */}
+      {tab==="today"&&<Dashboard patients={patients} visits={visits} notes={notes} finances={finances} doctors={doctors} tasks={tasks} nameOf={nameOf} goTab={setTab} openPatient={id=>setViewP({id})} updateVisitStatus={updateVisitStatus}/>}
 
       {/* CALENDAR — operational multi-doctor view (§3.2) */}
       {tab==="calendar"&&<AdminCalendar visits={visits} patients={patients} doctors={doctors} notes={notes} nameOf={nameOf} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} bookSession={bookSession}/>}
