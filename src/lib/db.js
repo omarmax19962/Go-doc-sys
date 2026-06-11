@@ -260,6 +260,24 @@ export const toFinance = (f) => ({
   visit_id: f.visitId || null,
 })
 
+// ---- CREDITS (patient prepaid wallet — top-ups) ----
+export const fromCredit = (r) => ({
+  id: r.id,
+  patientId: r.patient_id,
+  patientName: r.patient_name || '',
+  amount: Number(r.amount || 0),
+  date: r.date || null,
+  note: r.note || '',
+  createdAt: r.created_at || null,
+})
+export const toCredit = (c) => ({
+  patient_id: c.patientId,
+  patient_name: c.patientName || null,
+  amount: c.amount == null || c.amount === '' ? 0 : Number(c.amount),
+  date: c.date || null,
+  note: c.note ? c.note.trim() : null,
+})
+
 // ---- EXPENSES ----
 export const fromExpense = (r) => ({
   id: r.id,

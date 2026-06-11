@@ -1221,12 +1221,12 @@ function AppWithData({ role, me, onSignOut }){
   if (store.error) return <FullScreenError msg={`Database error: ${store.error}. Check that the schema.sql has been run.`} onSignOut={onSignOut} />;
 
   const {
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages, tasks,
+    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks,
     addTask, updateTask, removeTask,
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
-    updateFinance, settleFinances, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
+    updateFinance, settleFinances, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, resolveReschedule, bookSession, rescheduleVisit, deleteVisit,
     setExerciseLib, setModalityLib, markRead,
@@ -1240,7 +1240,7 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1521,7 +1521,7 @@ function DashKPI({label,value,sub,color,Icon,onClick}){
   </button>);
 }
 
-function Dashboard({patients,visits,notes,finances,doctors,tasks,nameOf,goTab,openPatient,updateVisitStatus}){
+function Dashboard({patients,visits,notes,finances,credits=[],doctors,tasks,nameOf,goTab,openPatient,updateVisitStatus}){
   const todayStr=ymd(new Date());
   const addD=(n)=>{const d=new Date();d.setDate(d.getDate()+n);return ymd(d);};
   const monthStart=()=>{const d=new Date();return ymd(new Date(d.getFullYear(),d.getMonth(),1));};
@@ -1563,6 +1563,14 @@ function Dashboard({patients,visits,notes,finances,doctors,tasks,nameOf,goTab,op
   const unconfirmed=visits.filter(v=>dOf(v)&&(v.status==="scheduled"||v.status==="pending_confirmation")&&(v.date===todayStr||v.date===addD(1)));
   const leadsFollow=patients.filter(p=>(!doctor||p.doctor===doctor)&&(p.status==="follow_up"||p.status==="didnt_reply"||p.status==="lead"));
   const openTasks=(tasks||[]).filter(t=>t.status!=="done");
+  // Patients whose prepaid credit wallet has gone negative (used more Paid sessions than topped up).
+  const creditOverdue=patients.filter(p=>{
+    if(doctor&&p.doctor!==doctor)return false;
+    const added=credits.filter(c=>c.patientId===p.id).reduce((a,c)=>a+(c.amount||0),0);
+    if(added<=0)return false;
+    const used=finances.filter(f=>f.patient===p.name&&f.status==="Paid").reduce((a,f)=>a+netFee(f),0);
+    return (added-used)<0;
+  });
   const items=[
     {k:"review",Icon:ClipboardCheck,color:C.amber,label:"Notes awaiting review",n:reviewQ.length,sub:"Approve or send back",go:()=>goTab("review")},
     {k:"red",Icon:AlertTriangle,color:C.red,label:"Red-flag notes",n:redFlags.length,sub:"Clinical attention needed",go:()=>goTab("review")},
@@ -1571,6 +1579,7 @@ function Dashboard({patients,visits,notes,finances,doctors,tasks,nameOf,goTab,op
     {k:"unconf",Icon:Clock,color:"#C99A2E",label:"Unconfirmed today / tomorrow",n:unconfirmed.length,sub:"Confirm or send a reminder",go:()=>goTab("calendar")},
     {k:"leads",Icon:Phone,color:C.teal,label:"Leads to follow up",n:leadsFollow.length,sub:"Lead · follow-up · no reply",go:()=>goTab("patients")},
     {k:"pay",Icon:Wallet,color:"#D9714E",label:"Outstanding payments",n:unpaidRows.length,sub:outstanding?`${egp(outstanding)} pending`:"",go:()=>goTab("finances")},
+    {k:"credit",Icon:Banknote,color:C.red,label:"Credit overdue",n:creditOverdue.length,sub:"Prepaid wallet exhausted",go:()=>goTab("patients")},
     {k:"tasks",Icon:ListChecks,color:C.ink,label:"Open tasks",n:openTasks.length,sub:"Team to-dos",go:()=>goTab("tasks")},
   ].filter(x=>x.n>0);
 
@@ -1656,7 +1665,7 @@ function Dashboard({patients,visits,notes,finances,doctors,tasks,nameOf,goTab,op
   </>);
 }
 
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   // Notification deep-link: a tapped notification jumps to the relevant place.
@@ -1693,7 +1702,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
 
     <div className="flex-1 overflow-y-auto p-4 sm:p-6">
       {/* TODAY — overview dashboard / decision center */}
-      {tab==="today"&&<Dashboard patients={patients} visits={visits} notes={notes} finances={finances} doctors={doctors} tasks={tasks} nameOf={nameOf} goTab={setTab} openPatient={id=>setViewP({id})} updateVisitStatus={updateVisitStatus}/>}
+      {tab==="today"&&<Dashboard patients={patients} visits={visits} notes={notes} finances={finances} credits={credits} doctors={doctors} tasks={tasks} nameOf={nameOf} goTab={setTab} openPatient={id=>setViewP({id})} updateVisitStatus={updateVisitStatus}/>}
 
       {/* CALENDAR — operational multi-doctor view (§3.2) */}
       {tab==="calendar"&&<AdminCalendar visits={visits} patients={patients} doctors={doctors} notes={notes} nameOf={nameOf} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} bookSession={bookSession}/>}
@@ -1826,7 +1835,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     </div>
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc,t)=>{addPatient(p,b,d,doc,t);setIntake(false);}}/>}
-    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} visits={visits} doctors={doctors} bookSession={bookSession} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient} submitNote={submitNote} exerciseLib={exerciseLib} modalityLib={modalityLib}/>}
+    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} credits={credits} addCredit={addCredit} removeCredit={removeCredit} config={config} visits={visits} doctors={doctors} bookSession={bookSession} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient} submitNote={submitNote} exerciseLib={exerciseLib} modalityLib={modalityLib}/>}
     {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
     {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
   </div>);
@@ -2998,7 +3007,7 @@ function SickLeaveModal({patient,onClose}){
   </div>);
 }
 
-function PatientFile({patient,notes,finances,visits,doctors,bookSession,rescheduleVisit,deleteVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,updatePatient,submitNote,exerciseLib,modalityLib,role="admin"}){
+function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,config,visits,doctors,bookSession,rescheduleVisit,deleteVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,updatePatient,submitNote,exerciseLib,modalityLib,role="admin"}){
   const[confirmDel,setConfirmDel]=useState(false);
   const[soapVisit,setSoapVisit]=useState(null);
   const[booking,setBooking]=useState(false);
@@ -3019,6 +3028,13 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
   const billed=myFin.reduce((a,r)=>a+(r.fee||0),0);
   const paidAmt=myFin.filter(r=>r.status==="Paid").reduce((a,r)=>a+r.net,0);
   const pendAmt=myFin.filter(r=>r.status==="Pending"||r.status==="Partial").reduce((a,r)=>a+r.net,0);
+  // Prepaid credit wallet: top-ups added − net of Paid sessions drawn down.
+  const myCredits=(credits||[]).filter(c=>c.patientId===patient.id).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.id-a.id));
+  const creditAdded=myCredits.reduce((a,c)=>a+(c.amount||0),0);
+  const creditBal=creditAdded-paidAmt;
+  const hasCredit=creditAdded>0;
+  const creditFee=config?.defaultFee||0;
+  const[creditAmt,setCreditAmt]=useState("");const[creditNote,setCreditNote]=useState("");
   const[mode,setMode]=useState("profile");const[sub,setSub]=useState("overview");
   const[tlType,setTlType]=useState("");const[open,setOpen]=useState(null);const[docs,setDocs]=useState(patient.files||[]);
   const[summary,setSummary]=useState(patient.discharge?.summary||"");
@@ -3192,6 +3208,45 @@ function PatientFile({patient,notes,finances,visits,doctors,bookSession,reschedu
           {[["Total billed",egp(billed),C.ink],["Paid",egp(paidAmt),C.green],["Outstanding",egp(pendAmt),C.amber]].map(([l,v,c])=>(
             <div key={l} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}><div className="text-[12px]" style={{color:C.grey}}>{l}</div><div className="text-[20px] font-bold mt-0.5" style={{color:c}}>{v}</div></div>))}
         </div>
+
+        {/* ---- Prepaid credit wallet ---- */}
+        {addCredit&&(()=>{
+          const overdue=hasCredit&&creditBal<0, low=hasCredit&&creditBal>=0&&creditBal<creditFee;
+          const bc=!hasCredit?C.grey:overdue?C.red:low?C.amber:C.green;
+          const bg=!hasCredit?"#F4F4F2":overdue?"#FCEDEA":low?"#FBF4E6":"#EEF8F0";
+          const submit=()=>{const v=Number(creditAmt);if(!v||v<=0)return;addCredit(patient.id,v,creditNote.trim()||null);setCreditAmt("");setCreditNote("");};
+          return(<div className="rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
+            <div className="px-5 py-3.5 flex items-center justify-between gap-3 flex-wrap" style={{background:bg,borderBottom:`1px solid ${C.line}`}}>
+              <div className="flex items-center gap-2"><Banknote size={16} color={bc}/><span className="text-[13px] font-bold" style={{fontFamily:HEAD,color:C.ink}}>Prepaid credit wallet</span>
+                {overdue&&<span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full text-white" style={{background:C.red}}>Overdue</span>}
+                {low&&<span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full" style={{background:C.amber+"22",color:"#9A6B00"}}>Low</span>}</div>
+              <div className="text-right"><div className="text-[11px]" style={{color:C.grey}}>{overdue?"Owes":"Balance"}</div><div className="text-[22px] font-bold tabular-nums" style={{color:bc}}>{egp(overdue?-creditBal:creditBal)}</div></div>
+            </div>
+            <div className="bg-white px-5 py-4 space-y-3">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div><div className="text-[11px]" style={{color:C.grey}}>Credit added</div><div className="text-[15px] font-bold tabular-nums" style={{color:C.ink}}>{egp(creditAdded)}</div></div>
+                <div><div className="text-[11px]" style={{color:C.grey}}>Used (paid)</div><div className="text-[15px] font-bold tabular-nums" style={{color:"#2E6E73"}}>{egp(paidAmt)}</div></div>
+                <div><div className="text-[11px]" style={{color:C.grey}}>Remaining</div><div className="text-[15px] font-bold tabular-nums" style={{color:bc}}>{egp(creditBal)}</div></div>
+              </div>
+              {overdue&&<div className="text-[12px] rounded-lg px-3 py-2 flex items-start gap-2" style={{background:"#FCEDEA",color:"#9A2A18"}}><AlertTriangle size={14} className="mt-0.5 shrink-0"/><span>This patient has used more than their prepaid credit. They owe <b>{egp(-creditBal)}</b> — record a new top-up to clear it.</span></div>}
+              <div className="flex items-end gap-2 flex-wrap">
+                <div className="flex-1 min-w-[120px]"><label className="text-[11px] font-semibold" style={{color:C.grey}}>Add credit ({config?.currency||"EGP"})</label>
+                  <input type="number" min="0" value={creditAmt} onChange={e=>setCreditAmt(e.target.value)} placeholder="e.g. 3000" className="w-full mt-1 px-3 py-2 rounded-lg text-[14px] tabular-nums outline-none bg-white" style={{border:`1px solid ${C.line}`}}/></div>
+                <div className="flex-1 min-w-[140px]"><label className="text-[11px] font-semibold" style={{color:C.grey}}>Note (optional)</label>
+                  <input value={creditNote} onChange={e=>setCreditNote(e.target.value)} placeholder="Cash · package deposit…" className="w-full mt-1 px-3 py-2 rounded-lg text-[14px] outline-none bg-white" style={{border:`1px solid ${C.line}`}}/></div>
+                <button onClick={submit} disabled={!Number(creditAmt)||Number(creditAmt)<=0} className="px-4 py-2 rounded-lg text-[13px] font-bold text-white disabled:opacity-40 flex items-center gap-1.5" style={{background:C.green}}><Plus size={14}/>Add</button>
+              </div>
+              {!!myCredits.length&&<div className="pt-1 space-y-1">
+                {myCredits.map(c=>(<div key={c.id} className="flex items-center justify-between gap-2 text-[12px] py-1.5" style={{borderTop:`1px solid ${C.line}`}}>
+                  <span style={{color:C.grey}}>{c.date}</span><span className="flex-1 truncate px-2" style={{color:C.ink2}}>{c.note||"Top-up"}</span>
+                  <span className="font-bold tabular-nums" style={{color:C.green}}>+{egp(c.amount)}</span>
+                  {removeCredit&&<button onClick={()=>removeCredit(c.id)} className="p-1 rounded hover:bg-black/5" title="Remove top-up"><X size={13} color={C.grey}/></button>}</div>))}
+              </div>}
+              {!hasCredit&&<p className="text-[11px]" style={{color:C.grey}}>No prepaid credit on file. Add a top-up to start tracking this patient's balance — paid sessions draw it down automatically.</p>}
+            </div>
+          </div>);
+        })()}
+
         <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
           <div className="px-5 py-2.5 text-[11px] font-bold uppercase tracking-wider grid grid-cols-12 gap-2" style={{color:C.grey,background:"#F4F4F2"}}>
             <span className="col-span-3">Date</span><span className="col-span-2">Type</span><span className="col-span-2 text-right">Fee</span><span className="col-span-2 text-right">Net</span><span className="col-span-3">Status</span></div>

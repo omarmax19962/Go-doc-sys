@@ -8,6 +8,7 @@ import {
   fromExercise, toExercise,
   fromModality, toModality,
   fromFinance, toFinance,
+  fromCredit, toCredit,
   fromExpense, toExpense,
   fromGrowth, toGrowth,
   fromConfig, toConfig,
@@ -20,6 +21,11 @@ import { showLocalNotification, subscribeToPush, pushSupported } from './push'
 
 // Human label for a task's assignee — used in device notifications.
 const assigneeTail = (a) => a === 'omar' ? ' · for Omar' : a === 'michael' ? ' · for Michael' : ''
+
+// Net fee of a billing line (fee − discount), floored at 0. Refunded/Waived
+// lines recognise no revenue, so they never draw down a patient's credit.
+const _net = (f) => (f.status === 'Refunded' || f.status === 'Waived')
+  ? 0 : Math.max(0, (Number(f.fee) || 0) - (Number(f.discount) || 0))
 
 /**
  * useDataStore — single source of truth for the app. Loads all entities once,
@@ -36,6 +42,7 @@ export function useDataStore({ role, me }) {
   const [exerciseLib, setExerciseLib] = useState([])
   const [modalityLib, setModalityLib] = useState([])
   const [finances, setFinances] = useState([])
+  const [credits, setCredits] = useState([])
   const [expenses, setExpenses] = useState([])
   const [growthMonths, setGrowthMonths] = useState([])
   const [packages, setPackages] = useState([])
@@ -75,7 +82,7 @@ export function useDataStore({ role, me }) {
       const notifQ = isDoctor
         ? supabase.from('notifications').select('*').eq('target', 'doctor').eq('to', me).order('ts', { ascending: false }).limit(50)
         : supabase.from('notifications').select('*').order('ts', { ascending: false }).limit(50)
-      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm, tk] = await Promise.all([
+      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm, tk, cr] = await Promise.all([
         supabase.from('doctors').select('*').order('id'), // small table, needed for name/colour lookups
         scoped('patients', 'doctor'),
         scoped('visits', 'doctor_name'),
@@ -91,6 +98,8 @@ export function useDataStore({ role, me }) {
         isDoctor ? Promise.resolve({ data: [] }) : supabase.from('growth_months').select('*').order('month'),
         // shared task / idea board — admin-only
         isDoctor ? Promise.resolve({ data: [] }) : supabase.from('tasks').select('*').order('created_at', { ascending: false }),
+        // patient prepaid credit wallet — admin-only
+        isDoctor ? Promise.resolve({ data: [] }) : supabase.from('credits').select('*').order('id'),
       ])
       if (d.error) throw d.error
       setDoctors((d.data || []).map(fromDoctor))
@@ -106,6 +115,7 @@ export function useDataStore({ role, me }) {
       setExpenses((exp.data || []).map(fromExpense))
       setGrowthMonths((gm.data || []).map(fromGrowth))
       setTasks((tk.data || []).map(fromTask))
+      setCredits((cr.data || []).map(fromCredit))
     } catch (e) {
       console.error('[useDataStore] load failed', e)
       setError(e.message || String(e))
@@ -141,6 +151,10 @@ export function useDataStore({ role, me }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'growth_months' }, () => {
         if (isDoctor) return
         supabase.from('growth_months').select('*').order('month').then(({ data }) => setGrowthMonths((data || []).map(fromGrowth)))
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'credits' }, () => {
+        if (isDoctor) return
+        supabase.from('credits').select('*').order('id').then(({ data }) => setCredits((data || []).map(fromCredit)))
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, (p) => {
         if (isDoctor) return // doctors don't have the board
@@ -589,10 +603,53 @@ export function useDataStore({ role, me }) {
   // patch is camelCase from the UI; map the multi-word keys to snake_case columns.
   const _FIN_COL = { paidOut: 'paid_out', paidOutDate: 'paid_out_date', visitId: 'visit_id' }
   const updateFinance = useCallback(async (id, patch) => {
+    const before = finances.find((f) => f.id === id)
     setFinances((fs) => fs.map((f) => f.id === id ? { ...f, ...patch } : f))
     const dbPatch = {}
     Object.entries(patch).forEach(([k, v]) => { dbPatch[_FIN_COL[k] || k] = v })
     await supabase.from('finances').update(dbPatch).eq('id', id)
+    // Prepaid-credit drawdown: when a session line flips to Paid, it consumes the
+    // patient's prepaid credit. If that pushes their wallet negative, warn admin
+    // the patient is overdue and needs a top-up. Only patients who actually hold
+    // credit (added > 0) are subject to this — pay-as-you-go patients are exempt.
+    if (before && patch.status === 'Paid' && before.status !== 'Paid') {
+      const pname = before.patient
+      const added = credits.filter((c) => c.patientName === pname).reduce((a, c) => a + (c.amount || 0), 0)
+      if (added > 0) {
+        const usedBefore = finances
+          .filter((f) => f.patient === pname && f.id !== id && f.status === 'Paid')
+          .reduce((a, f) => a + _net(f), 0)
+        const usedNow = usedBefore + _net({ ...before, ...patch })
+        const balBefore = added - usedBefore
+        const balNow = added - usedNow
+        if (balNow < 0 && balBefore >= 0) {
+          const owe = Math.round(-balNow)
+          const cur = config.currency || 'EGP'
+          const pid = patients.find((p) => p.name === pname)?.id || null
+          notify('admin', `⚠ ${pname} is overdue — prepaid credit exhausted (owes ${owe} ${cur}). Add a top-up to clear the balance.`, null, pid ? { patientId: pid } : { view: 'finances' })
+        }
+      }
+    }
+  }, [finances, credits, patients, config, notify])
+
+  // ---- PATIENT CREDIT WALLET (prepaid balance) ----
+  // A top-up the patient paid in advance. Paid sessions draw it down; when the
+  // wallet runs negative the patient is flagged overdue (see updateFinance).
+  const addCredit = useCallback(async (patientId, amount, note) => {
+    const amt = Number(amount)
+    if (!patientId || !amt || amt <= 0) return
+    const pt = patients.find((p) => p.id === patientId)
+    const row = { patientId, patientName: pt?.name || null, amount: amt, date: new Date().toISOString().slice(0, 10), note: note || null }
+    const { data, error } = await supabase.from('credits').insert(toCredit(row)).select().single()
+    if (error) { console.error('addCredit', error); return }
+    setCredits((cs) => [...cs, fromCredit(data)])
+    const cur = config.currency || 'EGP'
+    notify('admin', `Credit top-up: ${pt?.name || 'patient'} +${Math.round(amt)} ${cur}${note ? ` — ${note}` : ''}`, null, patientId ? { patientId } : null)
+  }, [patients, config, notify])
+
+  const removeCredit = useCallback(async (id) => {
+    setCredits((cs) => cs.filter((c) => c.id !== id))
+    await supabase.from('credits').delete().eq('id', id)
   }, [])
 
   // Mark a batch of session lines as paid-out (doctor settlement) — or un-settle.
@@ -910,13 +967,13 @@ export function useDataStore({ role, me }) {
 
   return {
     // data
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, expenses, growthMonths, config, notifs, packages, tasks,
+    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks,
     loading, error,
     // mutations
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
-    updateFinance, settleFinances, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
+    updateFinance, settleFinances, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,
     bookSession, rescheduleVisit, deleteVisit,
