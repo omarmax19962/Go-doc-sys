@@ -544,6 +544,39 @@ export function useDataStore({ role, me }) {
     await supabase.from('notes').update({ state: 'under_review', opened_at: nowISO() }).eq('id', id).eq('state', 'submitted')
   }, [])
 
+  // ---- PATIENT-FACING SIMPLIFIED SUMMARIES ----
+  // Save the plain-language patient summary (EN/AR) for a session note. `edited`
+  // marks it as human-reviewed so auto-generation never overwrites it.
+  const savePatientSummary = useCallback(async (id, { en, ar, edited = true }) => {
+    setNotes((ns) => ns.map((x) => x.id === id
+      ? { ...x, patientSummaryEn: en ?? x.patientSummaryEn, patientSummaryAr: ar ?? x.patientSummaryAr, patientSummaryEdited: edited }
+      : x))
+    const patch = { patient_summary_edited: edited }
+    if (en !== undefined) patch.patient_summary_en = en ? String(en).trim() : null
+    if (ar !== undefined) patch.patient_summary_ar = ar ? String(ar).trim() : null
+    const { error } = await supabase.from('notes').update(patch).eq('id', id)
+    if (error) console.error('savePatientSummary', error)
+  }, [])
+
+  // Ask the optional AI edge function to rewrite a clinical note into plain
+  // patient language. Returns { en, ar } or throws so the caller can fall back
+  // to the built-in local simplifier (no key, no cost).
+  const aiSimplifyNote = useCallback(async (note) => {
+    const { data, error } = await supabase.functions.invoke('simplify-note', {
+      body: {
+        type: note.type, painBefore: note.painBefore, painAfter: note.painAfter,
+        response: note.response, subjective: note.subjective, objective: note.objective,
+        assessment: note.assessment, goals: note.goals, hep: note.hep,
+        education: note.education, plan: note.plan, additionalNotes: note.additionalNotes,
+        exercises: (note.exercises || []).map((e) => e?.name || e).filter(Boolean),
+        modalities: (note.modalities || []).map((m) => m?.name || m).filter(Boolean),
+      },
+    })
+    if (error) throw error
+    if (!data || (!data.en && !data.ar)) throw new Error('empty simplify result')
+    return { en: data.en || '', ar: data.ar || '' }
+  }, [])
+
   const addDoctor = useCallback(async (d) => {
     const { data, error } = await supabase.from('doctors').insert(toDoctor({ ...d, files: [], slots: d.slots || [] })).select().single()
     if (error) { console.error('addDoctor', error); return }
@@ -1000,7 +1033,7 @@ export function useDataStore({ role, me }) {
     loading, error,
     // mutations
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
-    submitNote, reviewNote, openNoteForReview,
+    submitNote, reviewNote, openNoteForReview, savePatientSummary, aiSimplifyNote,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, settleFinances, removeFinance, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,

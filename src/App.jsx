@@ -5,12 +5,14 @@ import {
   CircleCheck, AlertTriangle, MessageSquare, CornerUpLeft, Trash2, Activity, Wallet,
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
   Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle, Eye, Image as ImageIcon,
-  ListChecks, Lightbulb, GripVertical, BellRing, TrendingUp, ArrowUpDown, RotateCcw
+  ListChecks, Lightbulb, GripVertical, BellRing, TrendingUp, ArrowUpDown, RotateCcw,
+  Sparkles, Languages, HeartPulse
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
 import { useAuth } from "./lib/useAuth";
 import { useDataStore } from "./lib/useDataStore";
+import { localSimplify, summaryFor, progressOverview } from "./lib/patientSummary";
 import { openWhatsApp } from "./lib/wa";
 import { planForDx } from "./lib/rehab";
 import { ensureNotifyPermission, notifPermission, notifSupported, subscribeToPush } from "./lib/push";
@@ -867,6 +869,97 @@ const printInvoice = (patient, rows, currency="EGP") => {
   if(!w){ alert("Please allow pop-ups to generate the invoice."); return; }
   w.document.open(); w.document.write(html); w.document.close();
 };
+
+// Patient Progress Report — a warm, plain-language summary for the PATIENT.
+// Pulls the per-session patient-friendly summaries (saved/AI/local) plus an
+// overall progress narrative, in English or Arabic. Opens a print window.
+const printPatientReport = (patient, notes, lang="en") => {
+  const ar = lang === "ar";
+  const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  const hist = (notes||[]).filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  const today = new Date().toISOString().slice(0,10);
+  const ref = `PR-${patient.id||"0"}-${today.replace(/-/g,"")}`;
+  const withPain = hist.filter(n=>n.painBefore!=null||n.painAfter!=null);
+  const startPain = withPain[0] ? (withPain[0].painBefore ?? withPain[0].painAfter) : null;
+  const endPain = withPain.length ? (withPain[withPain.length-1].painAfter ?? withPain[withPain.length-1].painBefore) : null;
+  const overview = progressOverview(hist, lang);
+  const fmtDate = d => { try { return new Date(d+"T00:00:00").toLocaleDateString(ar?"ar-EG":"en-GB",{day:"numeric",month:"long",year:"numeric"}); } catch { return d; } };
+  const t = ar ? {
+    title:"تقرير تقدّم العلاج", sub:"العلاج الطبيعي والرعاية المنزلية", patient:"المريض", doctor:"الطبيب المعالج",
+    issued:"تاريخ التقرير", sessions:"عدد الجلسات", startPain:"الألم في البداية", nowPain:"الألم الآن",
+    overviewH:"نظرة عامة على تقدّمك", sessionH:"ملخّص كل جلسة بلغة بسيطة", session:"جلسة", noSessions:"لا توجد جلسات مسجّلة بعد.",
+    foot:"تم إنشاء هذا التقرير بواسطة Go Doc لمساعدتك على فهم رحلتك العلاجية. لأي استفسار، تواصل مع فريق Go Doc.",
+    of:"من 10", print:"اطبع / احفظ PDF"
+  } : {
+    title:"Progress Report", sub:"Physiotherapy & home care", patient:"Patient", doctor:"Treating doctor",
+    issued:"Report date", sessions:"Sessions", startPain:"Pain at start", nowPain:"Pain now",
+    overviewH:"Your progress so far", sessionH:"What happened each session — in plain language", session:"Session", noSessions:"No sessions recorded yet.",
+    foot:"This report was created by Go Doc to help you understand your treatment journey. For any questions, reach out to the Go Doc team.",
+    of:"out of 10", print:"Print / Save as PDF"
+  };
+  const cards = hist.length ? hist.map((n,i)=>{
+    const text = summaryFor(n, lang) || localSimplify(n, lang);
+    const pain = (n.painBefore!=null||n.painAfter!=null)
+      ? `<span class="pain">${ar?"الألم":"Pain"}: ${n.painBefore??"–"} → ${n.painAfter??"–"} ${t.of}</span>` : "";
+    return `<div class="scard">
+      <div class="shead"><span class="snum">${i+1}</span><b>${t.session} ${i+1}</b><span class="sdate">${esc(fmtDate(n.date))}${n.type?" · "+esc(n.type):""}</span></div>
+      ${pain}
+      <p>${esc(text)}</p>
+    </div>`;
+  }).join("") : `<p class="empty">${t.noSessions}</p>`;
+  const html = `<!doctype html><html lang="${lang}" dir="${ar?"rtl":"ltr"}"><head><meta charset="utf-8"><title>${esc(ref)}</title>
+  <style>
+    *{box-sizing:border-box;} body{font-family:${ar?"'Segoe UI',Tahoma,Arial":"-apple-system,Segoe UI,Roboto,sans-serif"};color:#1E2A3A;margin:0;padding:32px;direction:${ar?"rtl":"ltr"};}
+    .wrap{max-width:760px;margin:0 auto;}
+    .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #7DD8DF;padding-bottom:16px;margin-bottom:20px;}
+    .brand{font-size:26px;font-weight:800;letter-spacing:-.5px;} .brand span{color:#3FA796;}
+    .muted{color:#8794A1;font-size:12px;} h1{font-size:15px;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;}
+    .meta{text-align:${ar?"left":"right"};font-size:12px;color:#5b6675;line-height:1.7;}
+    .who{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:18px;font-size:14px;}
+    .who div span{color:#8794A1;}
+    .stats{display:flex;gap:12px;margin:8px 0 22px;flex-wrap:wrap;}
+    .stat{flex:1;min-width:140px;background:#F3F6F7;border-radius:12px;padding:12px 16px;text-align:center;}
+    .stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#8794A1;}
+    .stat .v{font-size:24px;font-weight:800;margin-top:2px;}
+    .ov{background:#EAF6F4;border:1px solid #Bfe3dc;border-radius:14px;padding:16px 18px;font-size:15px;line-height:1.75;margin-bottom:22px;}
+    .ov b.h{display:flex;align-items:center;gap:8px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#2E6E73;margin-bottom:6px;}
+    .secH{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#5b6675;margin:0 0 10px;}
+    .scard{border:1px solid #E6EBEE;border-radius:12px;padding:13px 16px;margin-bottom:11px;}
+    .shead{display:flex;align-items:center;gap:9px;margin-bottom:5px;font-size:14px;}
+    .snum{width:22px;height:22px;border-radius:50%;background:#3FA796;color:#fff;font-weight:800;font-size:12px;display:inline-flex;align-items:center;justify-content:center;flex:none;}
+    .sdate{margin-${ar?"right":"left"}:auto;font-size:12px;color:#8794A1;}
+    .pain{display:inline-block;font-size:11px;font-weight:700;color:#2E6E73;background:#E7F4F1;padding:2px 9px;border-radius:999px;margin-bottom:5px;}
+    .scard p{margin:0;font-size:14px;line-height:1.7;color:#33474B;}
+    .empty{color:#8794A1;font-size:14px;}
+    .foot{margin-top:34px;border-top:1px solid #E6EBEE;padding-top:14px;font-size:11px;color:#8794A1;text-align:center;line-height:1.6;}
+    @media print{body{padding:0;} .noprint{display:none;}}
+    .btn{background:#1E2A3A;color:#fff;border:none;padding:10px 18px;border-radius:10px;font-weight:700;cursor:pointer;font-size:13px;}
+  </style></head><body><div class="wrap">
+    <div class="noprint" style="text-align:${ar?"left":"right"};margin-bottom:16px;"><button class="btn" onclick="window.print()">${t.print}</button></div>
+    <div class="head">
+      <div><div class="brand">Go<span>Doc</span></div><div class="muted">${t.sub}</div></div>
+      <div class="meta"><h1>${t.title}</h1><div><b>${esc(ref)}</b></div><div>${t.issued}: ${esc(fmtDate(today))}</div></div>
+    </div>
+    <div class="who">
+      <div><span>${t.patient}: </span><b>${esc(patient.name||"—")}</b></div>
+      ${patient.doctor&&patient.doctor!=="—"?`<div><span>${t.doctor}: </span><b>${esc(patient.doctor)}</b></div>`:""}
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="l">${t.sessions}</div><div class="v" style="color:#1E2A3A;">${hist.length}</div></div>
+      <div class="stat"><div class="l">${t.startPain}</div><div class="v" style="color:#C0392B;">${startPain??"–"}</div></div>
+      <div class="stat"><div class="l">${t.nowPain}</div><div class="v" style="color:#3FA796;">${endPain??"–"}</div></div>
+    </div>
+    <div class="ov"><b class="h">&#10084; ${t.overviewH}</b>${esc(overview)}</div>
+    <div class="secH">${t.sessionH}</div>
+    ${cards}
+    <div class="foot">${t.foot}<br>Ref ${esc(ref)} · ${esc(fmtDate(today))}</div>
+  </div>
+  <script>window.onload=function(){setTimeout(function(){window.print();},350);};</script>
+  </body></html>`;
+  const w = window.open("", "_blank", "width=820,height=900");
+  if(!w){ alert(ar?"يرجى السماح بالنوافذ المنبثقة.":"Please allow pop-ups to generate the report."); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+};
 const EXPENSE_CATS = ["Marketing","Rent","Salaries","Equipment","Utilities","Software","Other"];
 const ym = s => (s||"").slice(0,7);
 const monthLabel = m => { if(!m)return"—"; const [y,mo]=m.split("-"); return `${MONTHS[(+mo||1)-1].slice(0,3)} ${y}`; };
@@ -1224,7 +1317,7 @@ function AppWithData({ role, me, onSignOut }){
     doctors, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks,
     addTask, updateTask, removeTask,
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
-    submitNote, reviewNote, openNoteForReview,
+    submitNote, reviewNote, openNoteForReview, savePatientSummary, aiSimplifyNote,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, settleFinances, removeFinance, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
@@ -1240,8 +1333,8 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
 }
@@ -1668,7 +1761,7 @@ function Dashboard({patients,visits,notes,finances,credits=[],doctors,tasks,name
   </>);
 }
 
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   // Notification deep-link: a tapped notification jumps to the relevant place.
@@ -1838,7 +1931,7 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
     </div>
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc,t)=>{addPatient(p,b,d,doc,t);setIntake(false);}}/>}
-    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} credits={credits} addCredit={addCredit} removeCredit={removeCredit} config={config} visits={visits} doctors={doctors} bookSession={bookSession} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient} submitNote={submitNote} exerciseLib={exerciseLib} modalityLib={modalityLib}/>}
+    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} credits={credits} addCredit={addCredit} removeCredit={removeCredit} config={config} visits={visits} doctors={doctors} bookSession={bookSession} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient} submitNote={submitNote} savePatientSummary={savePatientSummary} aiSimplifyNote={aiSimplifyNote} exerciseLib={exerciseLib} modalityLib={modalityLib}/>}
     {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
     {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
   </div>);
@@ -3052,12 +3145,78 @@ function SickLeaveModal({patient,onClose}){
   </div>);
 }
 
-function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,config,visits,doctors,bookSession,rescheduleVisit,deleteVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,updatePatient,submitNote,exerciseLib,modalityLib,role="admin"}){
+/* Per-session patient-friendly summary: generate (AI w/ local fallback), edit EN/AR, save. */
+function PatientSummaryBlock({note,savePatientSummary,aiSimplifyNote,reload}){
+  const hasSaved=!!(note.patientSummaryEn||note.patientSummaryAr);
+  const[open,setOpen]=useState(hasSaved);
+  const[busy,setBusy]=useState(false);
+  const[src,setSrc]=useState(hasSaved?"saved":"");
+  const[en,setEn]=useState(note.patientSummaryEn||"");
+  const[ar,setAr]=useState(note.patientSummaryAr||"");
+  const[saved,setSaved]=useState(false);
+  const generate=async()=>{
+    setBusy(true);setOpen(true);setSaved(false);
+    let res=null;
+    try{ if(aiSimplifyNote) res=await aiSimplifyNote(note); }catch{ res=null; }
+    if(res&&(res.en||res.ar)){ setEn(res.en||localSimplify(note,"en")); setAr(res.ar||localSimplify(note,"ar")); setSrc("ai"); }
+    else { setEn(localSimplify(note,"en")); setAr(localSimplify(note,"ar")); setSrc("local"); }
+    setBusy(false);
+  };
+  const save=()=>{ savePatientSummary&&savePatientSummary(note.id,{en:en.trim(),ar:ar.trim(),edited:true}); setSrc("saved"); setSaved(true); };
+  if(!savePatientSummary&&!aiSimplifyNote&&!hasSaved) return null;
+  const badge=src==="saved"?["Saved",C.green]:src==="ai"?["AI draft",C.teal]:src==="local"?["Plain draft",C.amber]:null;
+  return(<div className="mt-2 rounded-xl p-3" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`}}>
+    <div className="flex items-center gap-2 flex-wrap">
+      <Sparkles size={14} color={C.teal}/>
+      <b className="text-[12px]" style={{color:C.ink}}>Patient-friendly summary</b>
+      {badge&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:badge[1]+"22",color:badge[1]}}>{badge[0]}</span>}
+      <button onClick={generate} disabled={busy} className="ml-auto flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg text-white disabled:opacity-50" style={{background:C.teal}}>
+        <Sparkles size={12}/>{busy?"Simplifying…":(hasSaved||src?"Regenerate":"Simplify for patient")}</button>
+    </div>
+    {open&&<div className="mt-2.5 space-y-2.5">
+      <div>
+        <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{color:C.grey}}>English</div>
+        <textarea value={en} onChange={e=>{setEn(e.target.value);setSaved(false);}} rows={2} placeholder="Plain English summary…" className="w-full px-2.5 py-2 rounded-lg text-[13px] outline-none resize-none bg-white" style={{border:`1px solid ${C.line}`}}/>
+      </div>
+      <div>
+        <div className="text-[10px] font-bold uppercase tracking-wide mb-1" style={{color:C.grey}}>بالعربي</div>
+        <textarea dir="rtl" value={ar} onChange={e=>{setAr(e.target.value);setSaved(false);}} rows={2} placeholder="ملخّص بسيط للمريض…" className="w-full px-2.5 py-2 rounded-lg text-[13px] outline-none resize-none bg-white text-right" style={{border:`1px solid ${C.line}`}}/>
+      </div>
+      <div className="flex items-center gap-2">
+        <button onClick={save} disabled={!en.trim()&&!ar.trim()} className="flex items-center gap-1.5 text-[12px] font-bold px-3 py-1.5 rounded-lg text-white disabled:opacity-40" style={{background:C.ink}}><Check size={13}/>Save summary</button>
+        {saved&&<span className="text-[11px] font-semibold" style={{color:C.green}}>Saved · shows on the patient report</span>}
+      </div>
+    </div>}
+  </div>);
+}
+
+function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,config,visits,doctors,bookSession,rescheduleVisit,deleteVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,updatePatient,submitNote,savePatientSummary,aiSimplifyNote,exerciseLib,modalityLib,role="admin"}){
+  const[repLang,setRepLang]=useState("en");
+  const[bulkBusy,setBulkBusy]=useState(false);
+  const[bulkProg,setBulkProg]=useState(0);
   const[confirmDel,setConfirmDel]=useState(false);
   const[soapVisit,setSoapVisit]=useState(null);
   const[booking,setBooking]=useState(false);
   const[slOpen,setSlOpen]=useState(false);
   const hist=notes.filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  // Bulk: fill plain-language summaries for any sessions that don't have one yet
+  // (AI when a key is configured, instant local fallback otherwise). Never
+  // overwrites a doctor-edited summary.
+  const missingSummary=hist.filter(n=>!(n.patientSummaryEn||n.patientSummaryAr));
+  const bulkSimplify=async()=>{
+    if(!savePatientSummary||bulkBusy)return;
+    setBulkBusy(true);setBulkProg(0);
+    for(let i=0;i<missingSummary.length;i++){
+      const n=missingSummary[i];
+      let res=null;
+      try{ if(aiSimplifyNote) res=await aiSimplifyNote(n); }catch{ res=null; }
+      const en=(res&&res.en)?res.en:localSimplify(n,"en");
+      const ar=(res&&res.ar)?res.ar:localSimplify(n,"ar");
+      await savePatientSummary(n.id,{en,ar,edited:false});
+      setBulkProg(i+1);
+    }
+    setBulkBusy(false);
+  };
   const data=hist.map((n,i)=>({s:`S${i+1}`,date:n.date,before:n.painBefore,after:n.painAfter}));
   const sessions=hist.length, startPain=hist[0]?.painBefore??null, endPain=hist.length?hist[hist.length-1].painAfter:null;
   const improvePct=startPain?Math.round(((startPain-endPain)/startPain)*100):0;
@@ -3116,6 +3275,10 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
             : <button onClick={()=>setMode("report")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><FileText size={15}/>Report</button>)}
           {role==="doctor"&&patient.status==="discharged"&&<button onClick={()=>setMode("report")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><FileText size={15}/>Report</button>}
           {role==="admin"&&bookSession&&patient.status!=="discharged"&&<button onClick={()=>setBooking(true)} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:"rgba(255,255,255,0.12)",color:"#fff"}}><Plus size={15}/>Add session</button>}
+          <div className="flex items-center rounded-full overflow-hidden" style={{border:"1px solid rgba(255,255,255,0.2)"}} title="Patient report language">
+            {[["en","EN"],["ar","ع"]].map(([k,l])=>(<button key={k} onClick={()=>setRepLang(k)} className="px-2 h-9 text-[12px] font-bold" style={{background:repLang===k?C.tealSoft:"transparent",color:repLang===k?C.ink:"#fff"}}>{l}</button>))}
+          </div>
+          <button onClick={()=>printPatientReport(patient,notes,repLang)} title="Patient-friendly progress report" className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:"rgba(255,255,255,0.12)",color:"#fff"}}><HeartPulse size={15}/>Patient report</button>
           {role==="admin"&&onDelete&&<button onClick={()=>setConfirmDel(true)} title="Delete patient permanently" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(192,57,43,0.22)"}}><Trash2 size={16} color="#fff"/></button>}
           <button onClick={onClose}><X size={22} color="#fff"/></button>
         </div>
@@ -3197,6 +3360,13 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
                   : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full ml-auto" style={{background:C.amber+"22",color:"#9a6a00"}}>SOAP missing</span>}
               </div>))}
           </div>):null;})()}
+        {hist.length>0&&savePatientSummary&&<div className="rounded-2xl p-3.5 mb-4 flex items-center gap-3 flex-wrap" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`}}>
+          <Sparkles size={16} color={C.teal}/>
+          <div className="flex-1 min-w-[180px]"><div className="text-[13px] font-bold" style={{color:C.ink,fontFamily:HEAD}}>Patient-friendly summaries</div>
+            <div className="text-[11px]" style={{color:C.grey}}>{missingSummary.length?`${missingSummary.length} of ${hist.length} session${hist.length>1?"s":""} still need a plain-language summary.`:`All ${hist.length} session${hist.length>1?"s":""} have a patient summary. Open a session to edit it.`}</div></div>
+          {missingSummary.length>0&&<button onClick={bulkSimplify} disabled={bulkBusy} className="flex items-center gap-1.5 text-[12px] font-bold px-3.5 py-2 rounded-xl text-white disabled:opacity-60" style={{background:C.teal}}>
+            <Sparkles size={14}/>{bulkBusy?`Simplifying ${bulkProg}/${missingSummary.length}…`:`Simplify all (${missingSummary.length})`}</button>}
+        </div>}
         <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
           <div className="px-5 py-2.5 flex items-center justify-between" style={{background:"#F4F4F2"}}>
             <span className="text-[11px] font-bold uppercase tracking-wider" style={{color:C.grey}}>{hist.length} documented · tap to expand</span>
@@ -3229,6 +3399,7 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
                 {n.additionalNotes&&<div><b>Notes:</b> <span className="whitespace-pre-wrap">{n.additionalNotes}</span></div>}
                 {n.nextSessionDate&&<div><b>Next session:</b> {n.nextSessionDate}</div>}
                 {n.redFlag&&<div style={{color:C.red}}><b>Red flag:</b> {n.redFlagNote||"reported"}</div>}
+                <PatientSummaryBlock note={n} savePatientSummary={savePatientSummary} aiSimplifyNote={aiSimplifyNote}/>
               </div>}
             </div>);})}
           {!hist.length&&<div className="px-5 py-4 text-[13px]" style={{color:C.grey}}>No sessions yet.</div>}
@@ -3613,7 +3784,7 @@ function RescheduleActionModal({v,patientName,onResolve,onClose}){
   </div>);
 }
 
-function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}){
+function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}){
   const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);const[booking,setBooking]=useState(null);
   // Notification deep-link: jump to a tab (view) or open the patient's file.
   const navigate=(link)=>{if(!link)return;if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}else if(link.view){const t=link.view==="review"||link.view==="finances"?"patients":link.view==="calendar"?"calendar":link.view;setTab(t);}};
@@ -3715,7 +3886,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
             {myPatients.length===0&&<p className="text-[13px]" style={{color:C.grey}}>No patients assigned to you yet.</p>}
           </div>
         </div></div>}
-      {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={[]} visits={visits} role="doctor" onClose={()=>setViewP(null)} onDischarge={()=>{}} updatePatientFiles={updatePatientFiles}/>}
+      {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={[]} visits={visits} role="doctor" onClose={()=>setViewP(null)} onDischarge={()=>{}} updatePatientFiles={updatePatientFiles} savePatientSummary={savePatientSummary} aiSimplifyNote={aiSimplifyNote}/>}
     </>:<Logger ctx={active} notes={notes} exerciseLib={exerciseLib} modalityLib={modalityLib} onBack={()=>setActive(null)} onSubmit={n=>{submitNote(n);setActive(null);}}/>}
   </div>);
 }

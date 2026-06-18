@@ -181,6 +181,10 @@ export const fromNote = (r) => ({
   hep: r.hep || '',
   education: r.education || '',
   additionalNotes: r.additional_notes || '',
+  // patient-facing simplified summaries
+  patientSummaryEn: r.patient_summary_en || '',
+  patientSummaryAr: r.patient_summary_ar || '',
+  patientSummaryEdited: !!r.patient_summary_edited,
 })
 export const toNote = (n) => ({
   patient_id: n.patientId,
@@ -208,6 +212,9 @@ export const toNote = (n) => ({
   hep: n.hep ? n.hep.trim() : null,
   education: n.education ? n.education.trim() : null,
   additional_notes: n.additionalNotes ? n.additionalNotes.trim() : null,
+  patient_summary_en: n.patientSummaryEn ? n.patientSummaryEn.trim() : null,
+  patient_summary_ar: n.patientSummaryAr ? n.patientSummaryAr.trim() : null,
+  patient_summary_edited: !!n.patientSummaryEdited,
 })
 
 // ---- EXERCISES ----
