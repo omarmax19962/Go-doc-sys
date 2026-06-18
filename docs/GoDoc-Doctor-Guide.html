@@ -59,6 +59,19 @@
   .ar{direction:rtl;text-align:right;font-size:12px}
   b,strong{color:var(--ink)}
   code{background:#EAF6F4;border:1px solid var(--tealSoft);border-radius:5px;padding:1px 6px;font-size:11.5px;color:var(--ink)}
+
+  /* Annotated screenshots */
+  .shotrow{display:flex;gap:16px;margin:14px 0 6px;align-items:flex-start}
+  .shot{flex:1;min-width:0}
+  .shot .cap{font-family:Georgia,serif;font-weight:700;color:var(--ink);font-size:13px;margin-bottom:7px;display:flex;align-items:center;gap:7px}
+  .shot .cap .dot{width:9px;height:9px;border-radius:50%;background:var(--teal);flex:none}
+  .frame{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 6px 18px rgba(15,42,46,.13);background:#fff}
+  .frame img{display:block;width:100%}
+  .pin{position:absolute;transform:translate(-50%,-50%);width:23px;height:23px;border-radius:50%;background:var(--red);color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;box-shadow:0 2px 7px rgba(0,0,0,.4);font-family:-apple-system,sans-serif;z-index:2}
+  .legend{margin:9px 0 0;padding:0;list-style:none;font-size:11px}
+  .legend li{display:flex;gap:7px;align-items:flex-start;margin:4px 0}
+  .legend .ln{flex:none;width:17px;height:17px;border-radius:50%;background:var(--red);color:#fff;font-weight:700;font-size:10px;display:flex;align-items:center;justify-content:center;margin-top:1px;font-family:-apple-system,sans-serif}
+  .legend b{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -124,9 +137,125 @@
   <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>1</span></div>
 </section>
 
-<!-- ============ PAGE 2 — The four tabs ============ -->
+<!-- ============ PAGE 2 — Screens at a glance (A) ============ -->
 <section class="page">
   <div class="kicker">Section 2</div>
+  <h2 class="section">Screens at a glance</h2>
+  <p class="lead">Real screenshots of the app, with numbered pins on the exact spots you tap.
+  The two screens below are where you start every day.</p>
+
+  <div class="shotrow">
+    <!-- LOGIN -->
+    <div class="shot">
+      <div class="cap"><span class="dot"></span>Signing in</div>
+      <div class="frame">
+        <img src="img/login.png" alt="Sign in screen">
+        <div class="pin" style="left:68%;top:38.8%">1</div>
+        <div class="pin" style="left:50%;top:47.8%">2</div>
+        <div class="pin" style="left:50%;top:56.3%">3</div>
+        <div class="pin" style="left:50%;top:66.5%">4</div>
+      </div>
+      <ul class="legend">
+        <li><span class="ln">1</span><div>Tap the <b>Doctor</b> tab (never Admin).</div></li>
+        <li><span class="ln">2</span><div>Type your <b>email</b>.</div></li>
+        <li><span class="ln">3</span><div>Type your <b>password</b>.</div></li>
+        <li><span class="ln">4</span><div>Tap <b>Sign in / Set password</b>.</div></li>
+      </ul>
+    </div>
+
+    <!-- VISITS -->
+    <div class="shot">
+      <div class="cap"><span class="dot"></span>Your home — Visits</div>
+      <div class="frame">
+        <img src="img/visits.png" alt="Visits tab">
+        <div class="pin" style="left:88%;top:2.5%">5</div>
+        <div class="pin" style="left:70.9%;top:10.9%">1</div>
+        <div class="pin" style="left:91.2%;top:10.9%">2</div>
+        <div class="pin" style="left:15.3%;top:17.1%">3</div>
+        <div class="pin" style="left:50%;top:22%">4</div>
+      </div>
+      <ul class="legend">
+        <li><span class="ln">1</span><div><b>Turn on alerts</b> — tap once so bookings reach you.</div></li>
+        <li><span class="ln">2</span><div><b>Bell</b> — your notifications.</div></li>
+        <li><span class="ln">3</span><div>The <b>four tabs</b> — switch between screens here.</div></li>
+        <li><span class="ln">4</span><div><b>Log a session</b> — record a walk-in or extra visit.</div></li>
+        <li><span class="ln">5</span><div><b>Sign out</b> when you're done.</div></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>2</span></div>
+</section>
+
+<!-- ============ PAGE 3 — Screens at a glance (B) ============ -->
+<section class="page">
+  <div class="kicker">Section 2 · continued</div>
+  <h2 class="section">Screens at a glance — Calendar, Patients &amp; Availability</h2>
+  <p class="lead">The other three tabs. Same idea — the pins mark exactly where to tap.</p>
+
+  <div class="shotrow">
+    <!-- CALENDAR -->
+    <div class="shot">
+      <div class="cap"><span class="dot"></span>Calendar</div>
+      <div class="frame">
+        <img src="img/calendar.png" alt="Calendar tab">
+        <div class="pin" style="left:38.5%;top:17.1%">1</div>
+        <div class="pin" style="left:50%;top:24.6%">2</div>
+        <div class="pin" style="left:16.3%;top:29.9%">3</div>
+        <div class="pin" style="left:24.4%;top:34.7%">4</div>
+        <div class="pin" style="left:55.8%;top:52.7%">5</div>
+      </div>
+      <ul class="legend">
+        <li><span class="ln">1</span><div>Open the <b>Calendar</b> tab.</div></li>
+        <li><span class="ln">2</span><div><b>Add patient to slot</b> — book a time.</div></li>
+        <li><span class="ln">3</span><div><b>Today / ‹ ›</b> — move between days.</div></li>
+        <li><span class="ln">4</span><div><b>Day / Week / Month</b> view.</div></li>
+        <li><span class="ln">5</span><div>Tap any <b>time slot</b> to book or open it.</div></li>
+      </ul>
+    </div>
+
+    <!-- PATIENTS -->
+    <div class="shot">
+      <div class="cap"><span class="dot"></span>Patients</div>
+      <div class="frame">
+        <img src="img/patients.png" alt="Patients tab">
+        <div class="pin" style="left:61.4%;top:17.1%">1</div>
+        <div class="pin" style="left:50%;top:26.5%">2</div>
+      </div>
+      <ul class="legend">
+        <li><span class="ln">1</span><div>Open the <b>Patients</b> tab.</div></li>
+        <li><span class="ln">2</span><div>Your caseload appears here — <b>tap a card</b> to open the full history. (Empty until the admin assigns patients to you.)</div></li>
+      </ul>
+    </div>
+
+    <!-- AVAILABILITY -->
+    <div class="shot">
+      <div class="cap"><span class="dot"></span>Availability</div>
+      <div class="frame">
+        <img src="img/availability.png" alt="Availability tab">
+        <div class="pin" style="left:84.5%;top:17.1%">1</div>
+        <div class="pin" style="left:46.5%;top:49%">2</div>
+      </div>
+      <ul class="legend">
+        <li><span class="ln">1</span><div>Open the <b>Availability</b> tab.</div></li>
+        <li><span class="ln">2</span><div><b>Tap the time cells</b> you're free — saves instantly. Scroll down for <b>coverage zones</b>.</div></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card teal ar">
+    <h3 style="text-align:right">بالعربي — الشاشات بسرعة</h3>
+    <p>الأرقام في الصور بتوريك المكان اللي تضغط عليه بالظبط: تبويب <b>Doctor</b> ثم الإيميل والباسورد وزر الدخول؛
+    وفي الشاشة الرئيسية فعّل <b>التنبيهات</b> واستخدم التبويبات الأربعة. في <b>Calendar</b> احجز المواعيد، وفي
+    <b>Availability</b> اضغط على الأوقات المتاحة لك.</p>
+  </div>
+
+  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>3</span></div>
+</section>
+
+<!-- ============ PAGE 4 — The four tabs ============ -->
+<section class="page">
+  <div class="kicker">Section 3</div>
   <h2 class="section">Your home screen — the four tabs</h2>
   <p class="lead">Everything you do lives under four tabs at the top of the screen.</p>
 
@@ -163,12 +292,12 @@
     changes, update it here first — it takes five seconds and prevents double-bookings.</p>
   </div>
 
-  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>2</span></div>
+  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>4</span></div>
 </section>
 
-<!-- ============ PAGE 3 — Documenting a session ============ -->
+<!-- ============ PAGE 5 — Documenting a session ============ -->
 <section class="page">
-  <div class="kicker">Section 3</div>
+  <div class="kicker">Section 4</div>
   <h2 class="section">Documenting a session (SOAP note)</h2>
   <p class="lead">After every visit, file a short note so the record stays complete and the admin can bill correctly.</p>
 
@@ -196,12 +325,12 @@
     لحد ما يأكدها.</p>
   </div>
 
-  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>3</span></div>
+  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>5</span></div>
 </section>
 
-<!-- ============ PAGE 4 — Statuses, FAQ, etiquette ============ -->
+<!-- ============ PAGE 6 — Statuses, FAQ, etiquette ============ -->
 <section class="page">
-  <div class="kicker">Section 4</div>
+  <div class="kicker">Section 5</div>
   <h2 class="section">Patient statuses &amp; good habits</h2>
 
   <p class="lead">Each patient carries a status so the whole team knows where they stand.</p>
@@ -245,7 +374,7 @@
   <p style="margin-top:18px;font-size:11.5px;color:var(--grey)">Questions this guide didn't answer? Message
   your Go Doc admin — they can see everything live and help right away.</p>
 
-  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>4</span></div>
+  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>6</span></div>
 </section>
 
 </body>
