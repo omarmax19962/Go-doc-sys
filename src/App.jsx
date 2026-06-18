@@ -5,7 +5,7 @@ import {
   CircleCheck, AlertTriangle, MessageSquare, CornerUpLeft, Trash2, Activity, Wallet,
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
   Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle, Eye, Image as ImageIcon,
-  ListChecks, Lightbulb, GripVertical, BellRing, TrendingUp, ArrowUpDown
+  ListChecks, Lightbulb, GripVertical, BellRing, TrendingUp, ArrowUpDown, RotateCcw
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
@@ -3110,6 +3110,7 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
           {patient.locUrl&&<a href={patient.locUrl} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(255,255,255,0.12)"}}><MapPin size={16} color="#fff"/></a>}
           {role==="admin"&&updatePatient&&<button onClick={()=>setMode(mode==="edit"?"profile":"edit")} title="Edit profile" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:mode==="edit"?C.teal:"rgba(255,255,255,0.12)"}}><Pencil size={15} color={mode==="edit"?C.ink:"#fff"}/></button>}
           {role==="admin"&&updatePatientStatus&&patient.status!=="discharged"&&<StatusMenu patient={patient} onSet={(to,note)=>updatePatientStatus(patient.id,to,note)}/>}
+          {role==="admin"&&patient.status==="discharged"&&updatePatientStatus&&<button onClick={()=>{if(window.confirm(`Reactivate ${patient.name}? They will return to the active loop.`))updatePatientStatus(patient.id,"active","Reactivated by admin");}} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.green,color:"#fff"}}><RotateCcw size={15}/>Reactivate</button>}
           {role==="admin"&&(patient.status!=="discharged"
             ? <button onClick={()=>setMode("discharge")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><LogOut size={15}/>Discharge</button>
             : <button onClick={()=>setMode("report")} className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><FileText size={15}/>Report</button>)}
