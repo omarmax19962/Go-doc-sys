@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Go Doc — Doctor Account Guide</title>
+<style>
+  :root{
+    --ink:#0F2A2E; --ink2:#33474B; --teal:#3FB6A8; --tealSoft:#A9D9D1;
+    --bg:#F4F1EA; --line:#E4E0D6; --grey:#7b8a8e; --green:#2E9E6B; --amber:#C98A2B; --red:#C0392B;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--ink2);font-size:12.5px;line-height:1.55;background:#fff}
+  h1,h2,h3{font-family:Georgia,"Times New Roman",serif;color:var(--ink);font-weight:700}
+  .page{width:210mm;min-height:297mm;padding:18mm 16mm;margin:0 auto;page-break-after:always;position:relative}
+  .page:last-child{page-break-after:auto}
+
+  /* Cover */
+  .cover{background:var(--ink);color:#fff;display:flex;flex-direction:column;justify-content:center}
+  .cover h1{color:#fff;font-size:46px;letter-spacing:-1px}
+  .cover .sub{color:var(--tealSoft);font-size:17px;margin-top:8px}
+  .cover .pill{align-self:flex-start;margin-top:26px;background:var(--teal);color:var(--ink);font-weight:700;font-size:13px;padding:8px 16px;border-radius:999px}
+  .cover .foot{position:absolute;bottom:18mm;left:16mm;right:16mm;color:var(--tealSoft);font-size:12px;border-top:1px solid rgba(169,217,209,.3);padding-top:12px;display:flex;justify-content:space-between}
+  .logo-dot{width:54px;height:54px;border-radius:50%;background:var(--teal);display:flex;align-items:center;justify-content:center;margin-bottom:22px}
+  .logo-dot span{font-size:26px}
+
+  .kicker{text-transform:uppercase;letter-spacing:2px;font-size:10.5px;font-weight:700;color:var(--teal);margin-bottom:4px}
+  h2.section{font-size:24px;margin-bottom:4px;padding-bottom:10px;border-bottom:2px solid var(--teal)}
+  h3.step{font-size:15.5px;margin:18px 0 6px}
+  p{margin:6px 0}
+  ul,ol{margin:6px 0 6px 20px}
+  li{margin:4px 0}
+  .lead{font-size:13.5px;color:var(--ink2);margin:10px 0 4px}
+
+  .card{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:12px 0}
+  .card.teal{background:#EAF6F4;border-color:var(--tealSoft)}
+  .card.amber{background:#FBF3E2;border-color:#EAD5A8}
+  .card.green{background:#E8F5EE;border-color:#BCE3CD}
+  .card h3{font-size:14px;margin-bottom:4px}
+
+  .tabrow{display:flex;gap:8px;margin:14px 0}
+  .tab{flex:1;background:var(--ink);color:#fff;border-radius:10px;padding:10px;text-align:center;font-weight:700;font-size:12px}
+  .tab small{display:block;color:var(--tealSoft);font-weight:400;font-size:9.5px;margin-top:3px}
+
+  .num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--teal);color:var(--ink);font-weight:700;font-size:12px;margin-right:8px;font-family:Georgia,serif}
+  .stepblock{display:flex;gap:10px;margin:10px 0}
+  .stepblock .body{flex:1}
+
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--ink);color:#fff;font-weight:600;font-family:inherit}
+  tr:nth-child(even) td{background:var(--bg)}
+  .chip{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px}
+  .chip.green{background:#D6EFE0;color:var(--green)}
+  .chip.amber{background:#F6E6C4;color:var(--amber)}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .pagefoot{position:absolute;bottom:10mm;left:16mm;right:16mm;display:flex;justify-content:space-between;font-size:10px;color:var(--grey);border-top:1px solid var(--line);padding-top:6px}
+  .ar{direction:rtl;text-align:right;font-size:12px}
+  b,strong{color:var(--ink)}
+  code{background:#EAF6F4;border:1px solid var(--tealSoft);border-radius:5px;padding:1px 6px;font-size:11.5px;color:var(--ink)}
+</style>
+</head>
+<body>
+
+<!-- ============ COVER ============ -->
+<section class="page cover">
+  <div class="logo-dot"><span>🩺</span></div>
+  <h1>Go Doc</h1>
+  <div class="sub">Doctor Account Guide</div>
+  <p style="color:#cfe7e2;font-size:13px;margin-top:18px;max-width:130mm">
+    Everything you need to sign in, manage your calendar, document sessions, and keep your
+    availability up to date — all from your phone.
+  </p>
+  <div class="pill">For all Go Doc clinicians</div>
+  <div class="foot">
+    <span>go-doc-sys.vercel.app</span>
+    <span>Onboarding &amp; daily use · v1.0</span>
+  </div>
+</section>
+
+<!-- ============ PAGE 1 — Getting started ============ -->
+<section class="page">
+  <div class="kicker">Section 1</div>
+  <h2 class="section">Getting started</h2>
+
+  <p class="lead">Go Doc is a web app — there is nothing to install. It works on any phone, tablet or
+  computer browser, and you can add it to your home screen so it opens like a normal app.</p>
+
+  <h3 class="step">1 · Open the app</h3>
+  <p>Go to <code>go-doc-sys.vercel.app</code> in your browser (Safari or Chrome). To keep it handy,
+  tap <b>Share → Add to Home Screen</b> — an icon appears just like a regular app.</p>
+
+  <h3 class="step">2 · Sign in on the Doctor tab</h3>
+  <div class="stepblock"><span class="num">a</span><div class="body">On the sign-in screen, make sure the <b>Doctor</b> tab is selected (not Admin).</div></div>
+  <div class="stepblock"><span class="num">b</span><div class="body">Enter the <b>email</b> and <b>password</b> your admin gave you (see the box below).</div></div>
+  <div class="stepblock"><span class="num">c</span><div class="body">Tap <b>Sign in</b>. You'll land on your personal dashboard.</div></div>
+
+  <div class="card teal">
+    <h3>🔑 Your login details</h3>
+    <p>Your admin creates your account before your first day. You'll receive:</p>
+    <ul>
+      <li><b>Email</b> — usually <code>yourname@godoc.com</code></li>
+      <li><b>Temporary password</b> — change it after your first sign-in (ask your admin to reset it for you anytime).</li>
+    </ul>
+    <p style="margin-top:8px;font-size:11.5px;color:var(--grey)">Only your admin can register a new doctor.
+    If the app says <i>"Ask your admin to add you first,"</i> your email hasn't been added yet.</p>
+  </div>
+
+  <div class="card amber">
+    <h3>🔔 Turn on notifications</h3>
+    <p>The first time you sign in, tap <b>Allow</b> when the browser asks about notifications, then tap the
+    small bell-enable button at the top of your screen. This is how you'll be alerted about new bookings,
+    schedule changes and approvals — even when the app is closed.</p>
+  </div>
+
+  <div class="card green ar">
+    <h3 style="text-align:right">بالعربي — البداية بسرعة</h3>
+    <p>افتح <code>go-doc-sys.vercel.app</code>، اختار تبويب <b>Doctor</b>، واكتب الإيميل والباسورد اللي وصلك من
+    الأدمن. فعّل الإشعارات (Notifications) أول مرة عشان توصلك مواعيدك وأي تعديل. تقدر تضيف الموقع على الشاشة
+    الرئيسية ليفتح زي أي تطبيق.</p>
+  </div>
+
+  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>1</span></div>
+</section>
+
+<!-- ============ PAGE 2 — The four tabs ============ -->
+<section class="page">
+  <div class="kicker">Section 2</div>
+  <h2 class="section">Your home screen — the four tabs</h2>
+  <p class="lead">Everything you do lives under four tabs at the top of the screen.</p>
+
+  <div class="tabrow">
+    <div class="tab">Visits<small>Today's sessions</small></div>
+    <div class="tab">Calendar<small>Your week</small></div>
+    <div class="tab">Patients<small>Your caseload</small></div>
+    <div class="tab">Availability<small>When &amp; where</small></div>
+  </div>
+
+  <h3 class="step">🗓️ Visits</h3>
+  <p>Your upcoming and in-progress sessions. Each card shows the date &amp; time, patient name, zone and
+  diagnosis. Tap a card to open the session and document it. Use <b>“Log a session”</b> at the top to
+  record a session you did independently (e.g. a walk-in or an extra visit).</p>
+
+  <h3 class="step">📅 Calendar</h3>
+  <p>A day-by-day view of your schedule. Tap any empty slot — or the <b>“Add patient to slot”</b> button —
+  to book a patient into that time. Tap an existing appointment to open that patient's file.</p>
+
+  <h3 class="step">👥 Patients</h3>
+  <p>Everyone assigned to you. Each entry shows their status, zone, diagnosis and how many sessions
+  they've had. Tap to view the full history — past SOAP notes, diagnosis and files.</p>
+
+  <h3 class="step">⚙️ Availability</h3>
+  <p>Two things you control yourself:</p>
+  <ul>
+    <li><b>Weekly availability</b> — tap the times you can see patients. Saves instantly; the admin sees it live.</li>
+    <li><b>Coverage zones</b> — tap the areas you cover (search in Arabic or English). The admin only books you where you work.</li>
+  </ul>
+
+  <div class="card">
+    <h3>Keep these two up to date</h3>
+    <p>Your availability and zones are how the admin knows when and where to book you. If your schedule
+    changes, update it here first — it takes five seconds and prevents double-bookings.</p>
+  </div>
+
+  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>2</span></div>
+</section>
+
+<!-- ============ PAGE 3 — Documenting a session ============ -->
+<section class="page">
+  <div class="kicker">Section 3</div>
+  <h2 class="section">Documenting a session (SOAP note)</h2>
+  <p class="lead">After every visit, file a short note so the record stays complete and the admin can bill correctly.</p>
+
+  <div class="stepblock"><span class="num">1</span><div class="body"><b>Open the session</b> — from <b>Visits</b>, tap the patient's card; or tap <b>“Log a session”</b> to start a fresh one.</div></div>
+  <div class="stepblock"><span class="num">2</span><div class="body"><b>Fill in the SOAP note</b> — Subjective, Objective, Assessment and Plan. You can pull exercises and modalities from the built-in library.</div></div>
+  <div class="stepblock"><span class="num">3</span><div class="body"><b>Set the diagnosis</b> if it isn't recorded yet — this shows on the patient's card for everyone.</div></div>
+  <div class="stepblock"><span class="num">4</span><div class="body"><b>Submit.</b> The session is marked complete, and the admin is notified the note is filed.</div></div>
+
+  <div class="card amber">
+    <h3>⏳ Booking a follow-up? It needs admin approval</h3>
+    <p>When you schedule the next session from inside a note — or add a patient to a slot from your Calendar —
+    it's created as a <b>doctor-added</b> appointment and marked <span class="chip amber">Pending</span> until
+    the admin approves it. You'll see <i>“⏳ Pending admin approval”</i> on the appointment, and it becomes
+    <span class="chip green">Approved</span> once they confirm. This keeps the master schedule accurate.</p>
+  </div>
+
+  <h3 class="step">Rescheduling or cancelling</h3>
+  <p>On any upcoming visit you'll find quick actions to <b>reschedule</b> or <b>remove</b> it. The admin is
+  notified of the change automatically.</p>
+
+  <div class="card teal ar">
+    <h3 style="text-align:right">بالعربي — توثيق الجلسة</h3>
+    <p>بعد كل جلسة، افتحها من تبويب <b>Visits</b> واكتب ملاحظة الـ SOAP (الأعراض، الفحص، التقييم، الخطة) وحدّد
+    التشخيص لو مش متسجل، وبعدين اضغط <b>Submit</b>. لو حجزت جلسة متابعة بنفسك، هتظهر <b>“بانتظار موافقة الأدمن”</b>
+    لحد ما يأكدها.</p>
+  </div>
+
+  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>3</span></div>
+</section>
+
+<!-- ============ PAGE 4 — Statuses, FAQ, etiquette ============ -->
+<section class="page">
+  <div class="kicker">Section 4</div>
+  <h2 class="section">Patient statuses &amp; good habits</h2>
+
+  <p class="lead">Each patient carries a status so the whole team knows where they stand.</p>
+  <table>
+    <tr><th>Status</th><th>What it means</th></tr>
+    <tr><td><b>Booked</b></td><td>Scheduled, first session not done yet.</td></tr>
+    <tr><td><b>Active</b></td><td>In treatment — seeing them regularly.</td></tr>
+    <tr><td><b>Paused</b></td><td>Temporarily on hold (travel, illness, etc.).</td></tr>
+    <tr><td><b>Discharged</b></td><td>Treatment complete. The admin can reactivate them later if they return.</td></tr>
+  </table>
+  <p style="font-size:11.5px;color:var(--grey)">The admin manages status changes. Your job is to keep
+  notes and diagnoses current — the status often follows from your documentation.</p>
+
+  <h2 class="section" style="margin-top:22px">Frequently asked</h2>
+
+  <h3 class="step">I forgot my password.</h3>
+  <p>Ask your admin to reset it — they can issue a new one in seconds.</p>
+
+  <h3 class="step">It says my email isn't registered.</h3>
+  <p>Your admin hasn't added you yet, or you typed a different email. Confirm the exact address with them.</p>
+
+  <h3 class="step">I'm on the wrong screen / I see an Admin error.</h3>
+  <p>Make sure you picked the <b>Doctor</b> tab on the sign-in screen, not Admin.</p>
+
+  <h3 class="step">My new booking isn't on the master schedule.</h3>
+  <p>That's expected — doctor-added bookings stay <b>Pending</b> until the admin approves them.</p>
+
+  <h3 class="step">A patient came back after discharge.</h3>
+  <p>Let the admin know — they can <b>reactivate</b> the patient and bring them back into the loop.</p>
+
+  <div class="card green">
+    <h3>✅ Daily checklist</h3>
+    <ul>
+      <li>Check <b>Visits</b> at the start of your day.</li>
+      <li>File a SOAP note after <b>every</b> session.</li>
+      <li>Keep your <b>availability</b> and <b>zones</b> current.</li>
+      <li>Keep notifications on so you never miss a change.</li>
+    </ul>
+  </div>
+
+  <p style="margin-top:18px;font-size:11.5px;color:var(--grey)">Questions this guide didn't answer? Message
+  your Go Doc admin — they can see everything live and help right away.</p>
+
+  <div class="pagefoot"><span>Go Doc · Doctor Account Guide</span><span>4</span></div>
+</section>
+
+</body>
+</html>
