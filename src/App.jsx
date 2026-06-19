@@ -3256,14 +3256,14 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
   return(<div className="fixed inset-0 z-40 flex justify-center overflow-y-auto py-6" style={{background:"rgba(30,42,58,0.5)"}}>
     <div className="w-full max-w-[840px] mx-4 rounded-3xl self-start" style={{background:C.bg}}>
       {/* header */}
-      <div className="px-6 py-4 flex items-center justify-between rounded-t-3xl" style={{background:C.ink}}>
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-[18px]" style={{background:C.tealSoft,color:C.ink}}>{patient.name[0]}</div>
-          <div><h2 className="text-white text-[20px] font-bold leading-tight" style={{fontFamily:HEAD}}>{patient.name}</h2>
-            <div className="flex items-center gap-2 mt-0.5"><span className="text-[12px]" style={{color:C.tealSoft}}>{patient.dx?.label||"no dx"} · {patient.zone}</span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{background:statusColor[patient.status]+"44",color:"#fff"}}>{STATUS_LABEL[patient.status]||patient.status}</span></div></div>
+      <div className="px-6 py-4 flex items-start justify-between gap-3 rounded-t-3xl" style={{background:C.ink}}>
+        <div className="flex items-center gap-3 min-w-0 flex-shrink">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-[18px] flex-shrink-0" style={{background:C.tealSoft,color:C.ink}}>{patient.name[0]}</div>
+          <div className="min-w-0"><h2 className="text-white text-[20px] font-bold leading-tight truncate" style={{fontFamily:HEAD}}>{patient.name}</h2>
+            <div className="flex items-center gap-2 mt-0.5 min-w-0"><span className="text-[12px] truncate" style={{color:C.tealSoft}}>{patient.dx?.label||"no dx"} · {patient.zone}</span>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{background:statusColor[patient.status]+"44",color:"#fff"}}>{STATUS_LABEL[patient.status]||patient.status}</span></div></div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2 flex-shrink-0">
           {patient.phone&&<a href={`tel:${patient.phone}`} className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(255,255,255,0.12)"}}><Phone size={16} color="#fff"/></a>}
           {patient.phone&&<button onClick={()=>openWhatsApp(patient.phone,`Hi ${patient.name?.split(" ")[0]||""}, this is Go Doc.`)} title="Open WhatsApp chat" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(63,167,150,0.9)"}}><MessageCircle size={16} color="#fff"/></button>}
           {patient.locUrl&&<a href={patient.locUrl} target="_blank" rel="noreferrer" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(255,255,255,0.12)"}}><MapPin size={16} color="#fff"/></a>}
