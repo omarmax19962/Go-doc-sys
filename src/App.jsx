@@ -3190,7 +3190,103 @@ function PatientSummaryBlock({note,savePatientSummary,aiSimplifyNote,reload}){
   </div>);
 }
 
+/* Flexible invoice builder: pull past sessions OR enter custom line items
+   (count, dates, fee), edit each line, then generate a printable invoice. */
+function InvoiceBuilder({patient,seedRows=[],defaultFee=0,onClose}){
+  const today=new Date().toISOString().slice(0,10);
+  const mk=(o={})=>({id:Math.random().toString(36).slice(2),date:today,type:"Physiotherapy session",fee:defaultFee||0,discount:0,status:"Paid",...o});
+  const fromSessions=()=>seedRows.length?seedRows.map(r=>mk({date:r.date||today,type:r.type||"Physiotherapy session",fee:+r.fee||0,discount:+r.discount||0,status:r.status==="Paid"?"Paid":"Pending"})):[mk()];
+  const[items,setItems]=useState(seedRows.length?fromSessions():[mk()]);
+  const[currency,setCurrency]=useState("EGP");
+  const[name,setName]=useState(patient?.name||"");
+  const[phone,setPhone]=useState(patient?.phone||"");
+  const[qN,setQN]=useState(4);const[qFee,setQFee]=useState(defaultFee||0);const[qStart,setQStart]=useState(today);const[qEvery,setQEvery]=useState(7);const[qType,setQType]=useState("Physiotherapy session");const[qStatus,setQStatus]=useState("Pending");
+  const upd=(id,k,v)=>setItems(xs=>xs.map(x=>x.id===id?{...x,[k]:v}:x));
+  const del=id=>setItems(xs=>xs.filter(x=>x.id!==id));
+  const addBlank=()=>setItems(xs=>[...xs,mk({status:"Pending"})]);
+  const quickGen=()=>{
+    const n=Math.max(1,Math.min(60,Number(qN)||1));const base=qStart||today;
+    const rows=Array.from({length:n},(_,i)=>{const d=new Date(base+"T00:00:00");d.setDate(d.getDate()+i*(Number(qEvery)||0));return mk({date:d.toISOString().slice(0,10),type:qType||"Session",fee:Number(qFee)||0,status:qStatus});});
+    setItems(rows);
+  };
+  const net=r=>Math.max(0,(Number(r.fee)||0)-(Number(r.discount)||0));
+  const subtotal=items.reduce((a,r)=>a+(Number(r.fee)||0),0);
+  const disc=items.reduce((a,r)=>a+(Number(r.discount)||0),0);
+  const total=items.reduce((a,r)=>a+net(r),0);
+  const paid=items.filter(r=>r.status==="Paid").reduce((a,r)=>a+net(r),0);
+  const due=total-paid;
+  const fmt=n=>`${Math.round(n||0).toLocaleString()} ${currency}`;
+  const inp="px-2.5 py-1.5 rounded-lg text-[13px] outline-none bg-white";
+  const generate=()=>{ if(!items.length)return; printInvoice({...patient,name:name||patient?.name||"Patient",phone},items,currency); };
+  return(<div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto py-6 px-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={onClose}>
+    <div className="w-full max-w-[720px] rounded-3xl self-start" style={{background:C.bg}} onClick={e=>e.stopPropagation()}>
+      <div className="px-6 py-4 flex items-center justify-between rounded-t-3xl" style={{background:C.ink}}>
+        <div className="flex items-center gap-2"><Receipt size={18} color="#fff"/><h2 className="text-white text-[18px] font-bold" style={{fontFamily:HEAD}}>Build invoice</h2></div>
+        <button onClick={onClose}><X size={22} color="#fff"/></button>
+      </div>
+      <div className="p-5 space-y-4">
+        {/* billed-to + currency */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div><div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{color:C.grey}}>Billed to</div><input value={name} onChange={e=>setName(e.target.value)} className={inp+" w-full"} style={{border:`1px solid ${C.line}`}}/></div>
+          <div><div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{color:C.grey}}>Phone</div><input value={phone} onChange={e=>setPhone(e.target.value)} className={inp+" w-full"} style={{border:`1px solid ${C.line}`}}/></div>
+          <div><div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{color:C.grey}}>Currency</div><select value={currency} onChange={e=>setCurrency(e.target.value)} className={inp+" w-full"} style={{border:`1px solid ${C.line}`}}>{["EGP","USD","SAR","AED","EUR"].map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+        </div>
+
+        {/* quick generate */}
+        <div className="rounded-2xl p-3.5" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`}}>
+          <div className="flex items-center gap-2 mb-2.5"><Sparkles size={15} color={C.teal}/><b className="text-[12.5px]" style={{color:C.ink,fontFamily:HEAD}}>Quick generate sessions</b></div>
+          <div className="flex flex-wrap items-end gap-2.5">
+            <label className="text-[11px] font-semibold" style={{color:C.grey}}>Sessions<input type="number" min="1" max="60" value={qN} onChange={e=>setQN(e.target.value)} className={inp+" w-16 block mt-1"} style={{border:`1px solid ${C.line}`}}/></label>
+            <label className="text-[11px] font-semibold" style={{color:C.grey}}>Fee each<input type="number" min="0" value={qFee} onChange={e=>setQFee(e.target.value)} className={inp+" w-24 block mt-1"} style={{border:`1px solid ${C.line}`}}/></label>
+            <label className="text-[11px] font-semibold" style={{color:C.grey}}>Start date<input type="date" value={qStart} onChange={e=>setQStart(e.target.value)} className={inp+" block mt-1"} style={{border:`1px solid ${C.line}`}}/></label>
+            <label className="text-[11px] font-semibold" style={{color:C.grey}}>Every (days)<input type="number" min="0" value={qEvery} onChange={e=>setQEvery(e.target.value)} className={inp+" w-16 block mt-1"} style={{border:`1px solid ${C.line}`}}/></label>
+            <label className="text-[11px] font-semibold" style={{color:C.grey}}>Status<select value={qStatus} onChange={e=>setQStatus(e.target.value)} className={inp+" block mt-1"} style={{border:`1px solid ${C.line}`}}>{["Pending","Paid"].map(s=><option key={s}>{s}</option>)}</select></label>
+            <button onClick={quickGen} className="px-3.5 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:C.teal}}>Generate {qN||0} lines</button>
+          </div>
+          <div className="text-[11px] mt-2" style={{color:C.grey}}>Description: <input value={qType} onChange={e=>setQType(e.target.value)} className="px-2 py-1 rounded-md text-[12px] bg-white" style={{border:`1px solid ${C.line}`}}/> — replaces all current lines.</div>
+        </div>
+
+        {/* line items */}
+        <div className="bg-white rounded-2xl overflow-hidden" style={{border:`1px solid ${C.line}`}}>
+          <div className="px-4 py-2 grid grid-cols-[1.1fr_1.6fr_0.9fr_0.9fr_0.9fr_auto] gap-2 text-[10px] font-bold uppercase tracking-wide" style={{color:C.grey,background:"#F4F4F2"}}>
+            <span>Date</span><span>Description</span><span className="text-right">Fee</span><span className="text-right">Discount</span><span>Status</span><span></span>
+          </div>
+          {items.map(r=>(<div key={r.id} className="px-4 py-2 grid grid-cols-[1.1fr_1.6fr_0.9fr_0.9fr_0.9fr_auto] gap-2 items-center" style={{borderTop:`1px solid ${C.line}`}}>
+            <input type="date" value={r.date} onChange={e=>upd(r.id,"date",e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/>
+            <input value={r.type} onChange={e=>upd(r.id,"type",e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}/>
+            <input type="number" min="0" value={r.fee} onChange={e=>upd(r.id,"fee",e.target.value)} className={inp+" text-right"} style={{border:`1px solid ${C.line}`}}/>
+            <input type="number" min="0" value={r.discount} onChange={e=>upd(r.id,"discount",e.target.value)} className={inp+" text-right"} style={{border:`1px solid ${C.line}`}}/>
+            <select value={r.status} onChange={e=>upd(r.id,"status",e.target.value)} className={inp} style={{border:`1px solid ${C.line}`}}>{["Paid","Pending","Partial"].map(s=><option key={s}>{s}</option>)}</select>
+            <button onClick={()=>del(r.id)} className="w-7 h-7 rounded-lg flex items-center justify-center" style={{background:"#FCEDEA"}}><Trash2 size={14} color={C.red}/></button>
+          </div>))}
+          {!items.length&&<div className="px-4 py-4 text-[12px]" style={{color:C.grey}}>No lines yet — add one or quick-generate.</div>}
+          <div className="px-4 py-2.5 flex items-center gap-2" style={{borderTop:`1px solid ${C.line}`}}>
+            <button onClick={addBlank} className="flex items-center gap-1.5 text-[12px] font-bold px-3 py-1.5 rounded-lg" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}><Plus size={13}/>Add line</button>
+            {seedRows.length>0&&<button onClick={()=>setItems(fromSessions())} className="flex items-center gap-1.5 text-[12px] font-bold px-3 py-1.5 rounded-lg" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}><RotateCcw size={13}/>Reset from sessions ({seedRows.length})</button>}
+          </div>
+        </div>
+
+        {/* totals + actions */}
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div className="text-[12.5px] space-y-1" style={{color:C.ink2}}>
+            <div className="flex gap-6"><span style={{color:C.grey}}>Subtotal</span><b style={{color:C.ink}}>{fmt(subtotal)}</b></div>
+            {disc>0&&<div className="flex gap-6"><span style={{color:C.grey}}>Discounts</span><b style={{color:C.ink}}>−{fmt(disc)}</b></div>}
+            <div className="flex gap-6"><span style={{color:C.grey}}>Net total</span><b style={{color:C.ink}}>{fmt(total)}</b></div>
+            <div className="flex gap-6"><span style={{color:C.grey}}>Paid</span><b style={{color:C.green}}>{fmt(paid)}</b></div>
+            <div className="flex gap-6"><span style={{color:C.grey}}>Outstanding</span><b style={{color:C.amber}}>{fmt(due)}</b></div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-[13px] font-bold" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}>Cancel</button>
+            <button onClick={generate} disabled={!items.length} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-bold text-white disabled:opacity-40" style={{background:C.ink}}><Receipt size={15}/>Generate invoice</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>);
+}
+
 function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,config,visits,doctors,bookSession,rescheduleVisit,deleteVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,updatePatient,submitNote,savePatientSummary,aiSimplifyNote,exerciseLib,modalityLib,role="admin"}){
+  const[invOpen,setInvOpen]=useState(false);
   const[repLang,setRepLang]=useState("en");
   const[bulkBusy,setBulkBusy]=useState(false);
   const[bulkProg,setBulkProg]=useState(0);
@@ -3285,6 +3381,7 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
       </div>
 
       {booking&&<BookingModal slot={{date:today,time:"09:00"}} doctors={doctors} patients={[]} visits={visits} fixedPatient={patient} onClose={()=>setBooking(false)} onBook={async payload=>{await bookSession({...payload,booker:"admin"});}}/>}
+      {invOpen&&<InvoiceBuilder patient={patient} seedRows={myFin} defaultFee={config?.defaultFee||0} onClose={()=>setInvOpen(false)}/>}
 
       {slOpen&&<SickLeaveModal patient={patient} onClose={()=>setSlOpen(false)}/>}
 
@@ -3419,7 +3516,10 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
       {mode==="profile"&&sub==="finance"&&<div className="p-6 space-y-4">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-[14px] font-bold" style={{fontFamily:HEAD}}>Billing summary</h3>
-          <button onClick={()=>printInvoice(patient,myFin,"EGP")} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:C.ink}}><Receipt size={14}/>Invoice / Receipt</button>
+          <div className="flex items-center gap-2">
+            <button onClick={()=>setInvOpen(true)} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold" style={{background:C.bg,color:C.ink,border:`1px solid ${C.line}`}}><Plus size={14}/>Build invoice</button>
+            <button onClick={()=>printInvoice(patient,myFin,"EGP")} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:C.ink}}><Receipt size={14}/>Invoice / Receipt</button>
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-3">
           {[["Total billed",egp(billed),C.ink],["Paid",egp(paidAmt),C.green],["Outstanding",egp(pendAmt),C.amber]].map(([l,v,c])=>(
