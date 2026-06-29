@@ -110,8 +110,9 @@ export function useDataStore({ role, me }) {
         isConsultant ? Promise.resolve({ data: [] }) : supabase.from('booking_requests').select('*').order('id', { ascending: false }),
       ])
       if (d.error) throw d.error
-      // sweep expired holds so the inbox status stays honest
-      if (!isConsultant) supabase.rpc('expire_stale_bookings').catch(() => {})
+      // sweep expired holds so the inbox status stays honest (fire-and-forget;
+      // the query builder is thenable but has no .catch, so wrap it)
+      if (!isConsultant) Promise.resolve(supabase.rpc('expire_stale_bookings')).catch(() => {})
       setDoctors((d.data || []).map(fromDoctor))
       setConsultants((co.data || []).map(fromConsultant))
       setBookingRequests((bk.data || []).map(fromBooking))
