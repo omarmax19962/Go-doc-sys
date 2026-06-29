@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
 import {
   fromDoctor, toDoctor,
+  fromConsultant, toConsultant,
   fromPatient, toPatient,
   fromVisit, toVisit,
   fromNote, toNote,
@@ -36,6 +37,7 @@ const _net = (f) => (f.status === 'Refunded' || f.status === 'Waived')
  */
 export function useDataStore({ role, me }) {
   const [doctors, setDoctors] = useState([])
+  const [consultants, setConsultants] = useState([])
   const [patients, setPatients] = useState([])
   const [visits, setVisits] = useState([])
   const [notes, setNotes] = useState([])
@@ -70,6 +72,7 @@ export function useDataStore({ role, me }) {
   // finances/packages/notifications scoped by name) instead of the whole
   // clinic dataset — a profile loads fast and stays small. Admin loads all.
   const isDoctor = role === 'doctor'
+  const isConsultant = role === 'consultant'
   const loadAll = useCallback(async () => {
     setLoading(true); setError(null)
     try {
@@ -82,7 +85,9 @@ export function useDataStore({ role, me }) {
       const notifQ = isDoctor
         ? supabase.from('notifications').select('*').eq('target', 'doctor').eq('to', me).order('ts', { ascending: false }).limit(50)
         : supabase.from('notifications').select('*').order('ts', { ascending: false }).limit(50)
-      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm, tk, cr] = await Promise.all([
+      // admin-only ledgers — skip for doctors and consultants
+      const ledgerSkip = isDoctor || isConsultant
+      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm, tk, cr, co] = await Promise.all([
         supabase.from('doctors').select('*').order('id'), // small table, needed for name/colour lookups
         scoped('patients', 'doctor'),
         scoped('visits', 'doctor_name'),
@@ -93,16 +98,16 @@ export function useDataStore({ role, me }) {
         supabase.from('config').select('*').eq('id', 1).maybeSingle(),
         notifQ,
         scoped('packages', 'doctor_name'),
-        // expenses + growth are admin-only finance ledgers — skip for doctors
-        isDoctor ? Promise.resolve({ data: [] }) : supabase.from('expenses').select('*').order('id'),
-        isDoctor ? Promise.resolve({ data: [] }) : supabase.from('growth_months').select('*').order('month'),
-        // shared task / idea board — admin-only
-        isDoctor ? Promise.resolve({ data: [] }) : supabase.from('tasks').select('*').order('created_at', { ascending: false }),
-        // patient prepaid credit wallet — admin-only
-        isDoctor ? Promise.resolve({ data: [] }) : supabase.from('credits').select('*').order('id'),
+        ledgerSkip ? Promise.resolve({ data: [] }) : supabase.from('expenses').select('*').order('id'),
+        ledgerSkip ? Promise.resolve({ data: [] }) : supabase.from('growth_months').select('*').order('month'),
+        ledgerSkip ? Promise.resolve({ data: [] }) : supabase.from('tasks').select('*').order('created_at', { ascending: false }),
+        ledgerSkip ? Promise.resolve({ data: [] }) : supabase.from('credits').select('*').order('id'),
+        // referring consultants — admin/doctor read all; a consultant reads only self (RLS)
+        supabase.from('consultants').select('*').order('id'),
       ])
       if (d.error) throw d.error
       setDoctors((d.data || []).map(fromDoctor))
+      setConsultants((co.data || []).map(fromConsultant))
       setPatients((p.data || []).map(fromPatient))
       setVisits((v.data || []).map(fromVisit))
       setNotes((n.data || []).map(fromNote))
@@ -591,6 +596,37 @@ export function useDataStore({ role, me }) {
     if (d) notify('admin', `Doctor removed: ${d.name}`)
   }, [doctors, notify])
 
+  // ---- REFERRING CONSULTANTS (ortho/neuro portal) ----
+  const addConsultant = useCallback(async (c) => {
+    const { data, error } = await supabase.from('consultants').insert(toConsultant(c)).select().single()
+    if (error) { console.error('addConsultant', error); return null }
+    const row = fromConsultant(data)
+    setConsultants((cs) => [...cs, row])
+    notify('admin', `Referring consultant added: ${c.name}`)
+    return row
+  }, [notify])
+
+  const removeConsultant = useCallback(async (id) => {
+    const c = consultants.find((x) => x.id === id)
+    setConsultants((cs) => cs.filter((x) => x.id !== id))
+    await supabase.from('consultants').delete().eq('id', id)
+    if (c) notify('admin', `Referring consultant removed: ${c.name}`)
+  }, [consultants, notify])
+
+  // Assign / clear a patient's referring consultant and their data-sharing consent.
+  const setReferrer = useCallback(async (pid, consultantId, consent) => {
+    setPatients((ps) => ps.map((p) => p.id === pid ? { ...p, referrerId: consultantId ?? null, referrerConsent: !!consent } : p))
+    const { error } = await supabase.from('patients').update({ referrer_id: consultantId ?? null, referrer_consent: !!consent }).eq('id', pid)
+    if (error) console.error('setReferrer', error)
+  }, [])
+
+  // Save the clinical protocol / precautions the consultant set for a patient.
+  const savePatientProtocol = useCallback(async (pid, protocol) => {
+    setPatients((ps) => ps.map((p) => p.id === pid ? { ...p, protocol } : p))
+    const { error } = await supabase.from('patients').update({ protocol }).eq('id', pid)
+    if (error) console.error('savePatientProtocol', error)
+  }, [])
+
   const dischargePatient = useCallback(async (pid, report) => {
     const pt = patients.find((p) => p.id === pid)
     setPatients((ps) => ps.map((p) => p.id === pid ? { ...p, discharge: report } : p))
@@ -1029,12 +1065,13 @@ export function useDataStore({ role, me }) {
 
   return {
     // data
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks,
+    doctors, consultants, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks,
     loading, error,
     // mutations
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview, savePatientSummary, aiSimplifyNote,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
+    addConsultant, removeConsultant, setReferrer, savePatientProtocol,
     updateFinance, settleFinances, removeFinance, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,

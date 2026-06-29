@@ -6,7 +6,7 @@ import {
   FileText, TrendingDown, LogOut, Printer, History, Filter, Phone, Bell, Settings, MoreHorizontal,
   Layers, Lock, CalendarDays, Download, Receipt, Banknote, MessageCircle, Eye, Image as ImageIcon,
   ListChecks, Lightbulb, GripVertical, BellRing, TrendingUp, ArrowUpDown, RotateCcw,
-  Sparkles, Languages, HeartPulse
+  Sparkles, Languages, HeartPulse, ShieldCheck, Send, UserCog
 } from "lucide-react";
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "./lib/supabase";
@@ -14,6 +14,7 @@ import { useAuth } from "./lib/useAuth";
 import { useDataStore } from "./lib/useDataStore";
 import { localSimplify, summaryFor, progressOverview } from "./lib/patientSummary";
 import { openWhatsApp } from "./lib/wa";
+import { referralConfirmation, weeklyDigest, redFlagAlert, dischargeSummary } from "./lib/consultantMsg";
 import { planForDx } from "./lib/rehab";
 import { ensureNotifyPermission, notifPermission, notifSupported, subscribeToPush } from "./lib/push";
 import Login from "./components/Login";
@@ -873,7 +874,7 @@ const printInvoice = (patient, rows, currency="EGP") => {
 // Patient Progress Report — a warm, plain-language summary for the PATIENT.
 // Pulls the per-session patient-friendly summaries (saved/AI/local) plus an
 // overall progress narrative, in English or Arabic. Opens a print window.
-const printPatientReport = (patient, notes, lang="en") => {
+const printPatientReport = (patient, notes, lang="en", consultantName="") => {
   const ar = lang === "ar";
   const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   const hist = (notes||[]).filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
@@ -943,6 +944,7 @@ const printPatientReport = (patient, notes, lang="en") => {
     <div class="who">
       <div><span>${t.patient}: </span><b>${esc(patient.name||"—")}</b></div>
       ${patient.doctor&&patient.doctor!=="—"?`<div><span>${t.doctor}: </span><b>${esc(patient.doctor)}</b></div>`:""}
+      ${consultantName?`<div><span>${ar?"تحت إشراف":"Supervised by"}: </span><b>${esc(consultantName)}</b></div>`:""}
     </div>
     <div class="stats">
       <div class="stat"><div class="l">${t.sessions}</div><div class="v" style="color:#1E2A3A;">${hist.length}</div></div>
@@ -971,6 +973,101 @@ const respColor={better:C.green,same:C.grey,mixed:C.amber,worse:C.red};
 const STATUSES=["lead","follow_up","didnt_reply","booked","active","paused","discharged","lost"];
 const STATUS_LABEL={lead:"Lead",follow_up:"Follow-up",didnt_reply:"Didn't reply",booked:"Booked",active:"Active",paused:"Paused",discharged:"Discharged",lost:"Lost"};
 const statusColor={lead:C.amber,follow_up:"#E6A765",didnt_reply:"#B5A78A",booked:C.teal,active:C.green,paused:C.grey,discharged:C.ink,lost:C.red};
+
+/* ===== Referring-consultant protocol / precautions (ortho & neuro portal) ===== */
+const PROTOCOL_TEMPLATES=[
+  {key:"acl",name:"ACL reconstruction",phase:"Phase 1 — Protection (0–2 wks)",rom:"Knee flexion 0–90°, full passive extension",weightBearing:"Weight-bearing as tolerated with brace + crutches",precautions:"No open-chain quads, no pivoting/twisting, locked brace when walking"},
+  {key:"tkr",name:"Total knee replacement",phase:"Phase 1 — Early mobility (0–2 wks)",rom:"Aim flexion to 90°, full extension",weightBearing:"Weight-bearing as tolerated with walker/crutches",precautions:"No kneeling, watch for DVT signs, monitor wound"},
+  {key:"rcr",name:"Rotator cuff repair",phase:"Phase 1 — Passive only (0–6 wks)",rom:"Passive ROM only, no active elevation",weightBearing:"Sling at all times except exercises; no lifting",precautions:"No active abduction/ER, no weight-bearing through arm"},
+  {key:"thr",name:"Total hip replacement",phase:"Phase 1 — Precautions (0–6 wks)",rom:"Hip flexion < 90°",weightBearing:"Weight-bearing as tolerated with walker",precautions:"No hip flexion >90°, no adduction past midline, no internal rotation"},
+  {key:"stroke",name:"Post-stroke (neuro rehab)",phase:"Early neurorehabilitation",rom:"As tolerated; manage tone/spasticity",weightBearing:"Supervised, fall-risk precautions",precautions:"Monitor BP, fatigue & neuro status; stop on dizziness or new deficit"},
+  {key:"disc",name:"Lumbar disc / spine",phase:"Phase 1 — Pain control & stabilization",rom:"Neutral spine, avoid end-range flexion",weightBearing:"Full as tolerated",precautions:"No loaded flexion/heavy lifting, watch for radicular signs / red flags"},
+  {key:"custom",name:"Custom protocol",phase:"",rom:"",weightBearing:"",precautions:""},
+];
+const hasProtocol=(p)=>!!(p&&(p.template||p.phase||p.rom||p.weightBearing||p.precautions||p.notes));
+
+/* Read-only precautions card — shown to physios as guardrails and in views. */
+function ProtocolBanner({protocol,compact}){
+  if(!hasProtocol(protocol))return null;
+  const Row=({label,val})=>val?<div className={compact?"text-[12px]":"text-[12.5px]"}><span style={{color:C.grey}}>{label}: </span><b style={{color:C.ink}}>{val}</b></div>:null;
+  return(<div className="rounded-xl p-3" style={{background:"#FBF4E6",border:`1px solid #EAD5A8`}}>
+    <div className="flex items-center gap-2 mb-1.5"><ShieldCheck size={15} color={C.amber}/><b className="text-[12.5px]" style={{color:C.ink,fontFamily:HEAD}}>Consultant protocol &amp; precautions</b>
+      {protocol.template&&<span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:C.amber+"22",color:"#9a6a00"}}>{protocol.template}</span>}</div>
+    <div className="space-y-0.5">
+      <Row label="Phase" val={protocol.phase}/>
+      <Row label="ROM" val={protocol.rom}/>
+      <Row label="Weight-bearing" val={protocol.weightBearing}/>
+      <Row label="Precautions" val={protocol.precautions}/>
+      <Row label="Notes" val={protocol.notes}/>
+    </div>
+    {protocol.setBy&&<div className="text-[10.5px] mt-1.5" style={{color:C.grey}}>Set by {protocol.setBy}{protocol.setAt?` · ${protocol.setAt}`:""}</div>}
+  </div>);
+}
+
+/* Editable protocol form — used by admin and the referring consultant. */
+function ProtocolEditor({patient,savePatientProtocol,setByName="Consultant"}){
+  const[p,setP]=useState(patient.protocol||{});
+  const[saved,setSaved]=useState(false);
+  const set=(k)=>(v)=>{setP(s=>({...s,[k]:v}));setSaved(false);};
+  const applyTpl=(t)=>{setP({template:t.name,phase:t.phase,rom:t.rom,weightBearing:t.weightBearing,precautions:t.precautions,notes:p.notes||""});setSaved(false);};
+  const today=new Date().toISOString().slice(0,10);
+  const save=()=>{const next={...p,setBy:setByName,setAt:today};savePatientProtocol&&savePatientProtocol(patient.id,next);setSaved(true);};
+  const ta="w-full px-2.5 py-2 rounded-lg text-[13px] outline-none bg-white resize-none";
+  const F=({label,k,rows=1,ph})=>(<label className="block"><span className="text-[11px] font-bold uppercase tracking-wide" style={{color:C.grey}}>{label}</span>
+    <textarea value={p[k]||""} onChange={e=>set(k)(e.target.value)} rows={rows} placeholder={ph} className={ta+" mt-1"} style={{border:`1px solid ${C.line}`}}/></label>);
+  return(<div className="space-y-3">
+    <div className="flex flex-wrap gap-1.5">{PROTOCOL_TEMPLATES.map(t=>(
+      <button key={t.key} onClick={()=>applyTpl(t)} className="text-[11px] font-semibold px-2.5 py-1 rounded-full" style={{background:p.template===t.name?C.teal:"#fff",color:p.template===t.name?C.ink:C.ink2,border:`1px solid ${p.template===t.name?C.teal:C.line}`}}>{t.name}</button>))}</div>
+    <F label="Phase" k="phase" ph="e.g., Phase 1 — Protection (0–2 wks)"/>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><F label="ROM limits" k="rom" rows={2} ph="e.g., Knee flexion 0–90°"/><F label="Weight-bearing" k="weightBearing" rows={2} ph="e.g., Toe-touch with crutches"/></div>
+    <F label="Precautions / contraindications" k="precautions" rows={2} ph="Things the physio must avoid"/>
+    <F label="Notes for the physio" k="notes" rows={2} ph="Anything else"/>
+    <div className="flex items-center gap-2"><button onClick={save} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[13px] font-bold text-white" style={{background:C.ink}}><Check size={15}/>Save protocol</button>
+      {saved&&<span className="text-[12px] font-semibold" style={{color:C.green}}>Saved · physio sees this on every session</span>}</div>
+  </div>);
+}
+
+/* Admin panel: link a patient to a referring consultant, capture consent, and
+   fire the WhatsApp messages that keep the consultant in the loop. */
+function ReferringConsultantPanel({patient,consultants=[],setReferrer,notes=[],config}){
+  const cur=consultants.find(c=>c.id===patient.referrerId)||null;
+  const[sel,setSel]=useState(patient.referrerId||"");
+  const clinic=config?.clinicName||"Go Doc";
+  const hist=notes.filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+  const lastRed=[...hist].reverse().find(n=>n.redFlag);
+  const send=(text)=>{ if(!cur?.phone){alert("Add a phone number for this consultant first.");return;} openWhatsApp(cur.phone,text); };
+  const msgs=cur?[
+    {label:"Referral confirmation",icon:Send,build:()=>referralConfirmation({patient,consultant:cur,clinic})},
+    {label:"Weekly digest",icon:Activity,build:()=>weeklyDigest({patient,notes:hist,clinic})},
+    {label:"Red-flag alert",icon:AlertTriangle,build:()=>redFlagAlert({patient,note:lastRed||{},clinic}),disabled:!lastRed},
+    {label:"Discharge summary",icon:FileText,build:()=>dischargeSummary({patient,clinic}),disabled:!patient.discharge},
+  ]:[];
+  return(<div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
+    <div className="flex items-center gap-2 mb-1"><Stethoscope size={16} color={C.teal}/><h3 className="text-[14px] font-bold" style={{fontFamily:HEAD}}>Referring consultant</h3></div>
+    <p className="text-[12px] mb-3" style={{color:C.grey}}>Link the ortho/neuro doctor who referred this patient so they can supervise the rehab and receive WhatsApp updates.</p>
+    <div className="flex flex-wrap items-center gap-2">
+      <select value={sel} onChange={e=>setSel(e.target.value?Number(e.target.value):"")} className="px-3 py-2 rounded-lg text-[13px] bg-white" style={{border:`1px solid ${C.line}`}}>
+        <option value="">— No consultant —</option>
+        {consultants.map(c=><option key={c.id} value={c.id}>{c.name}{c.specialty?` · ${c.specialty}`:""}</option>)}
+      </select>
+      <button onClick={()=>setReferrer&&setReferrer(patient.id,sel||null,sel?patient.referrerConsent:false)} className="px-3 py-2 rounded-lg text-[13px] font-bold text-white" style={{background:C.ink}}>Save</button>
+    </div>
+    {cur&&<>
+      <label className="flex items-center gap-2 mt-3 text-[12.5px] cursor-pointer" style={{color:C.ink2}}>
+        <input type="checkbox" checked={!!patient.referrerConsent} onChange={e=>setReferrer&&setReferrer(patient.id,patient.referrerId,e.target.checked)}/>
+        Patient consents to {cur.name} seeing their recovery data.
+      </label>
+      {!patient.referrerConsent&&<p className="text-[11px] mt-1" style={{color:C.amber}}>Without consent the consultant can't see this patient in their portal (they can still receive WhatsApp updates you send).</p>}
+      <div className="mt-3 pt-3" style={{borderTop:`1px solid ${C.line}`}}>
+        <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{color:C.grey}}>Send WhatsApp to {cur.name}{cur.phone?"":" (no phone on file)"}</div>
+        <div className="flex flex-wrap gap-2">{msgs.map(m=>(
+          <button key={m.label} onClick={()=>send(m.build())} disabled={m.disabled} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold disabled:opacity-40" style={{background:"#EAF6F4",color:C.ink,border:`1px solid ${C.tealSoft}`}}>
+            <m.icon size={13}/>{m.label}</button>))}</div>
+      </div>
+    </>}
+  </div>);
+}
+
 /* Statuses an admin can set directly on an existing patient (booked/active/discharged
    are state machine transitions, not manual flags). */
 const MANUAL_STATUS_OPTIONS=["follow_up","didnt_reply","paused","lost","active"];
@@ -1290,8 +1387,8 @@ export default function App(){
   if (authLoading) return <FullScreenLoading label="Loading…" />;
   if (!user) return <Login />;
   if (!profile) return <FullScreenLoading label="Setting up your profile…" />;
-  if (role !== 'admin' && role !== 'doctor') {
-    return <FullScreenError msg="Your account has no role assigned. Ask an admin to set role=admin or role=doctor on your profile." onSignOut={signOut} />;
+  if (role !== 'admin' && role !== 'doctor' && role !== 'consultant') {
+    return <FullScreenError msg="Your account has no role assigned. Ask an admin to set your role on your profile." onSignOut={signOut} />;
   }
   return <AppWithData role={role} me={profile.full_name || profile.email} onSignOut={signOut} />;
 }
@@ -1314,10 +1411,11 @@ function AppWithData({ role, me, onSignOut }){
   if (store.error) return <FullScreenError msg={`Database error: ${store.error}. Check that the schema.sql has been run.`} onSignOut={onSignOut} />;
 
   const {
-    doctors, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks,
+    doctors, consultants, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks,
     addTask, updateTask, removeTask,
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview, savePatientSummary, aiSimplifyNote,
+    addConsultant, removeConsultant, setReferrer, savePatientProtocol,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, settleFinances, removeFinance, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
@@ -1333,7 +1431,9 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,consultants,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
+        : role==="consultant"
+        ? <Consultant {...{patients,visits,notes,me,consultants,config,savePatientProtocol,updatePatientFiles,notifs,markRead}}/>
         : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
@@ -1761,7 +1861,7 @@ function Dashboard({patients,visits,notes,finances,credits=[],doctors,tasks,name
   </>);
 }
 
-function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   // Notification deep-link: a tapped notification jumps to the relevant place.
@@ -1927,11 +2027,11 @@ function Admin({patients,visits,notes,pending,doctors,exerciseLib,modalityLib,fi
       {tab==="library"&&<LibraryTab exerciseLib={exerciseLib} modalityLib={modalityLib} setExerciseLib={setExerciseLib} setModalityLib={setModalityLib}/>}
 
       {/* SETTINGS — defaults that feed intake / finance / billing */}
-      {tab==="settings"&&<SettingsTab config={config} updateConfig={updateConfig}/>}
+      {tab==="settings"&&<SettingsTab config={config} updateConfig={updateConfig} consultants={consultants} addConsultant={addConsultant} removeConsultant={removeConsultant}/>}
     </div>
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc,t)=>{addPatient(p,b,d,doc,t);setIntake(false);}}/>}
-    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} credits={credits} addCredit={addCredit} removeCredit={removeCredit} config={config} visits={visits} doctors={doctors} bookSession={bookSession} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient} submitNote={submitNote} savePatientSummary={savePatientSummary} aiSimplifyNote={aiSimplifyNote} exerciseLib={exerciseLib} modalityLib={modalityLib}/>}
+    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} credits={credits} addCredit={addCredit} removeCredit={removeCredit} config={config} visits={visits} doctors={doctors} consultants={consultants} setReferrer={setReferrer} savePatientProtocol={savePatientProtocol} bookSession={bookSession} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient} submitNote={submitNote} savePatientSummary={savePatientSummary} aiSimplifyNote={aiSimplifyNote} exerciseLib={exerciseLib} modalityLib={modalityLib}/>}
     {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
     {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
   </div>);
@@ -3285,7 +3385,7 @@ function InvoiceBuilder({patient,seedRows=[],defaultFee=0,onClose}){
   </div>);
 }
 
-function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,config,visits,doctors,bookSession,rescheduleVisit,deleteVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,updatePatient,submitNote,savePatientSummary,aiSimplifyNote,exerciseLib,modalityLib,role="admin"}){
+function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,config,visits,doctors,consultants=[],setReferrer,savePatientProtocol,meName="",bookSession,rescheduleVisit,deleteVisit,onClose,onDischarge,onDelete,updatePatientStatus,updatePatientFiles,updatePatient,submitNote,savePatientSummary,aiSimplifyNote,exerciseLib,modalityLib,role="admin"}){
   const[invOpen,setInvOpen]=useState(false);
   const[repLang,setRepLang]=useState("en");
   const[bulkBusy,setBulkBusy]=useState(false);
@@ -3357,7 +3457,8 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
           <div className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-[18px] flex-shrink-0" style={{background:C.tealSoft,color:C.ink}}>{patient.name[0]}</div>
           <div className="min-w-0"><h2 className="text-white text-[20px] font-bold leading-tight truncate" style={{fontFamily:HEAD}}>{patient.name}</h2>
             <div className="flex items-center gap-2 mt-0.5 min-w-0"><span className="text-[12px] truncate" style={{color:C.tealSoft}}>{patient.dx?.label||"no dx"} · {patient.zone}</span>
-              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{background:statusColor[patient.status]+"44",color:"#fff"}}>{STATUS_LABEL[patient.status]||patient.status}</span></div></div>
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{background:statusColor[patient.status]+"44",color:"#fff"}}>{STATUS_LABEL[patient.status]||patient.status}</span>
+              {(()=>{const r=consultants.find(c=>c.id===patient.referrerId);return r?<span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{background:"rgba(63,167,150,0.25)",color:"#fff"}} title={`Referring consultant: ${r.name}`}><Stethoscope size={11}/>Supervised by {r.name.split(" ")[0]}</span>:null;})()}</div></div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2 flex-shrink-0">
           {patient.phone&&<a href={`tel:${patient.phone}`} className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(255,255,255,0.12)"}}><Phone size={16} color="#fff"/></a>}
@@ -3374,7 +3475,7 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
           <div className="flex items-center rounded-full overflow-hidden" style={{border:"1px solid rgba(255,255,255,0.2)"}} title="Patient report language">
             {[["en","EN"],["ar","ع"]].map(([k,l])=>(<button key={k} onClick={()=>setRepLang(k)} className="px-2 h-9 text-[12px] font-bold" style={{background:repLang===k?C.tealSoft:"transparent",color:repLang===k?C.ink:"#fff"}}>{l}</button>))}
           </div>
-          <button onClick={()=>printPatientReport(patient,notes,repLang)} title="Patient-friendly progress report" className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:"rgba(255,255,255,0.12)",color:"#fff"}}><HeartPulse size={15}/>Patient report</button>
+          <button onClick={()=>printPatientReport(patient,notes,repLang,(consultants.find(c=>c.id===patient.referrerId)||{}).name||"")} title="Patient-friendly progress report" className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:"rgba(255,255,255,0.12)",color:"#fff"}}><HeartPulse size={15}/>Patient report</button>
           {role==="admin"&&onDelete&&<button onClick={()=>setConfirmDel(true)} title="Delete patient permanently" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(192,57,43,0.22)"}}><Trash2 size={16} color="#fff"/></button>}
           <button onClick={onClose}><X size={22} color="#fff"/></button>
         </div>
@@ -3407,6 +3508,14 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
       {/* ============ OVERVIEW ============ */}
       {mode==="profile"&&sub==="overview"&&<div className="p-6 space-y-4">
         {redFlags.length>0&&<div className="rounded-xl p-3.5 flex gap-2.5" style={{background:"#FDF3F1",border:`1px solid ${C.red}55`}}><AlertTriangle size={17} color={C.red}/><div className="text-[13px]" style={{color:C.ink2}}><b style={{color:C.red}}>{redFlags.length} red flag(s)</b> in history — latest: {redFlags[redFlags.length-1].redFlagNote||"reported"}</div></div>}
+        {role==="admin"&&setReferrer&&<ReferringConsultantPanel patient={patient} consultants={consultants} setReferrer={setReferrer} notes={notes} config={config}/>}
+        {savePatientProtocol&&(role==="admin"||role==="consultant")
+          ? <div className="bg-white rounded-2xl p-5" style={{border:`1px solid ${C.line}`}}>
+              <div className="flex items-center gap-2 mb-1"><ShieldCheck size={16} color={C.amber}/><h3 className="text-[14px] font-bold" style={{fontFamily:HEAD}}>Rehab protocol &amp; precautions</h3></div>
+              <p className="text-[12px] mb-3" style={{color:C.grey}}>{role==="consultant"?"Set the precautions your physiotherapy team must follow — they see this on every session.":"Set the consultant's precautions here; the physio sees them on every session."}</p>
+              <ProtocolEditor patient={patient} savePatientProtocol={savePatientProtocol} setByName={role==="consultant"?(meName||"Consultant"):"Admin"}/>
+            </div>
+          : hasProtocol(patient.protocol)&&<ProtocolBanner protocol={patient.protocol}/>}
         {role==="admin"&&<div className="flex flex-wrap items-center gap-2">
           <button onClick={()=>setSlOpen(true)} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:C.ink}}><FileText size={14}/>Sick leave note</button>
         </div>}
@@ -3749,6 +3858,34 @@ function SettingsTab({config,updateConfig}){
         <div className="flex-1"><div className="text-[13px] font-semibold" style={{color:C.ink}}>{a.name}</div><div className="text-[11px]" style={{color:C.grey}}>{a.email} · {a.role}</div></div>
       </div>))}</div>
     </div>
+    <ConsultantsCard consultants={consultants} addConsultant={addConsultant} removeConsultant={removeConsultant}/>
+  </div>);
+}
+
+/* Settings card: manage referring ortho/neuro consultants (portal accounts). */
+function ConsultantsCard({consultants=[],addConsultant,removeConsultant}){
+  const[f,setF]=useState({name:"",email:"",phone:"",specialty:"Orthopedics",clinic:""});
+  const set=k=>e=>setF(s=>({...s,[k]:e.target.value}));
+  const inp="px-3 py-2 rounded-lg text-[13px] bg-white outline-none w-full";
+  const add=()=>{ if(!f.name.trim())return; addConsultant&&addConsultant({...f,name:f.name.trim()}); setF({name:"",email:"",phone:"",specialty:"Orthopedics",clinic:""}); };
+  return(<div className="bg-white rounded-2xl p-6 mt-4" style={{border:`1px solid ${C.line}`}}>
+    <div className="flex items-center gap-2 mb-1"><Stethoscope size={16} color={C.teal}/><h3 className="font-bold text-[15px]" style={{fontFamily:HEAD}}>Referring consultants</h3></div>
+    <p className="text-[12px] mb-3" style={{color:C.grey}}>Ortho &amp; neuro doctors who refer patients and supervise their rehab. To give one portal access, add them here with the <b>same email</b> they'll sign in with, then create their auth account (or have them sign up with that email).</p>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+      <input value={f.name} onChange={set("name")} placeholder="Full name" className={inp} style={{border:`1px solid ${C.line}`}}/>
+      <input value={f.email} onChange={set("email")} placeholder="Email (for portal login)" className={inp} style={{border:`1px solid ${C.line}`}}/>
+      <input value={f.phone} onChange={set("phone")} placeholder="WhatsApp phone" className={inp} style={{border:`1px solid ${C.line}`}}/>
+      <select value={f.specialty} onChange={set("specialty")} className={inp} style={{border:`1px solid ${C.line}`}}>{["Orthopedics","Neurology","Neurosurgery","Sports medicine","Rheumatology","Other"].map(s=><option key={s}>{s}</option>)}</select>
+      <input value={f.clinic} onChange={set("clinic")} placeholder="Clinic / hospital (optional)" className={inp+" sm:col-span-2"} style={{border:`1px solid ${C.line}`}}/>
+    </div>
+    <button onClick={add} disabled={!f.name.trim()} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[13px] font-bold text-white disabled:opacity-40" style={{background:C.ink}}><Plus size={14}/>Add consultant</button>
+    <div className="space-y-2 mt-4">{consultants.length===0&&<div className="text-[12px]" style={{color:C.grey}}>No consultants yet.</div>}
+      {consultants.map(c=>(<div key={c.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl" style={{background:"#F4F4F2"}}>
+        <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-[13px]" style={{background:C.tealSoft,color:C.ink}}>{c.name.split(" ").map(s=>s[0]).join("").slice(0,2)}</div>
+        <div className="flex-1 min-w-0"><div className="text-[13px] font-semibold truncate" style={{color:C.ink}}>{c.name}{c.userId?<span className="text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded-full" style={{background:C.green+"22",color:C.green}}>portal active</span>:<span className="text-[10px] font-bold ml-2 px-1.5 py-0.5 rounded-full" style={{background:C.amber+"22",color:"#9a6a00"}}>no login yet</span>}</div>
+          <div className="text-[11px] truncate" style={{color:C.grey}}>{[c.specialty,c.email,c.phone].filter(Boolean).join(" · ")||"—"}</div></div>
+        <button onClick={()=>{if(window.confirm(`Remove ${c.name}?`))removeConsultant&&removeConsultant(c.id);}} className="w-8 h-8 rounded-lg flex items-center justify-center" style={{background:"#FCEDEA"}}><Trash2 size={14} color={C.red}/></button>
+      </div>))}</div>
   </div>);
 }
 
@@ -3881,6 +4018,64 @@ function RescheduleActionModal({v,patientName,onResolve,onClose}){
       <button disabled={busy} onClick={()=>run(date,time)} className="w-full mt-3 py-2.5 rounded-xl font-bold text-[14px] disabled:opacity-40" style={{background:C.ink,color:"#fff"}}>{busy?"Saving…":"Confirm reschedule"}</button>
       <button disabled={busy} onClick={()=>run(null,null)} className="w-full mt-2 py-2 rounded-xl font-semibold text-[13px]" style={{background:C.bg,color:C.ink2,border:`1px solid ${C.line}`}}>Just clear the request (keep date)</button>
     </div>
+  </div>);
+}
+
+/* ===== CONSULTANT PORTAL — referring ortho/neuro doctor (read-only + protocol) ===== */
+function Consultant({patients=[],visits=[],notes=[],me,consultants=[],config,savePatientProtocol,updatePatientFiles,notifs,markRead}){
+  const[viewP,setViewP]=useState(null);
+  const mine=consultants.find(c=>c.userId)||consultants[0]||null; // the signed-in consultant (RLS returns only self)
+  const clinic=config?.clinicName||"Go Doc";
+  // RLS already scopes `patients` to this consultant's consented patients.
+  const cards=patients.map(p=>{
+    const hist=notes.filter(n=>n.patientId===p.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
+    const withPain=hist.filter(n=>n.painBefore!=null||n.painAfter!=null);
+    const start=withPain[0]?(withPain[0].painBefore??withPain[0].painAfter):null;
+    const end=withPain.length?(withPain[withPain.length-1].painAfter??withPain[withPain.length-1].painBefore):null;
+    const last=hist[hist.length-1];
+    const redFlag=hist.some(n=>n.redFlag);
+    return{p,sessions:hist.length,start,end,last,redFlag};
+  });
+  const active=cards.filter(c=>c.p.status!=="discharged").length;
+  return(<div className="w-full max-w-[860px] mx-auto px-4 py-5">
+    <div className="rounded-3xl p-6 mb-4" style={{background:C.ink}}>
+      <div className="flex items-center gap-3">
+        <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{background:C.tealSoft}}><Stethoscope size={22} color={C.ink}/></div>
+        <div><h1 className="text-white text-[22px] font-bold leading-tight" style={{fontFamily:HEAD}}>{me}</h1>
+          <div className="text-[12px]" style={{color:C.tealSoft}}>{mine?.specialty||"Referring consultant"} · {patients.length} patient{patients.length===1?"":"s"} · {active} active</div></div>
+      </div>
+      <p className="text-[12.5px] mt-3" style={{color:"#cfe7e2"}}>You're supervising these patients' rehabilitation at {clinic}. Open a patient to follow every session and set the precautions your physiotherapy team must follow.</p>
+    </div>
+
+    {cards.length===0
+      ? <div className="bg-white rounded-2xl p-10 text-center" style={{border:`1px solid ${C.line}`}}>
+          <Stethoscope size={32} color={C.grey} className="mx-auto mb-2"/>
+          <div className="text-[14px] font-bold" style={{color:C.ink,fontFamily:HEAD}}>No patients yet</div>
+          <p className="text-[12.5px] mt-1" style={{color:C.grey}}>When {clinic} links one of your referrals to you (with the patient's consent), they'll appear here.</p>
+        </div>
+      : <div className="space-y-3">{cards.map(({p,sessions,start,end,last,redFlag})=>{
+          const improved=start!=null&&end!=null&&end<start;
+          const trendC=start==null||end==null?C.grey:end<start?C.green:end>start?C.amber:C.grey;
+          return(<button key={p.id} onClick={()=>setViewP(p)} className="w-full text-left bg-white rounded-2xl p-4 flex items-center gap-4" style={{border:`1px solid ${C.line}`}}>
+            <div className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-[16px] flex-shrink-0" style={{background:C.tealSoft,color:C.ink}}>{p.name[0]}</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2"><span className="text-[14px] font-bold truncate" style={{color:C.ink}}>{p.name}</span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{background:statusColor[p.status]+"22",color:statusColor[p.status]}}>{STATUS_LABEL[p.status]||p.status}</span>
+                {redFlag&&<AlertTriangle size={13} color={C.red}/>}
+                {hasProtocol(p.protocol)&&<ShieldCheck size={13} color={C.amber}/>}</div>
+              <div className="text-[12px] truncate" style={{color:C.grey}}>{p.dx?.label||"no diagnosis"} · {sessions} session{sessions===1?"":"s"}{last?.date?` · last ${last.date}`:""}</div>
+            </div>
+            <div className="text-right flex-shrink-0">
+              {start!=null&&end!=null
+                ? <div className="flex items-center gap-1 text-[15px] font-bold" style={{color:trendC}}>{start}<ChevronRight size={13}/>{end}<span className="text-[11px] font-semibold ml-0.5" style={{color:C.grey}}>/10</span></div>
+                : <div className="text-[12px]" style={{color:C.grey}}>no pain data</div>}
+              <div className="text-[10px] font-semibold" style={{color:trendC}}>{improved?"improving":start!=null&&end!=null?(end===start?"steady":"review"):""}</div>
+            </div>
+            <ChevronRight size={18} color={C.grey}/>
+          </button>);
+        })}</div>}
+
+    {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={[]} visits={visits} consultants={consultants} config={config} role="consultant" meName={me} savePatientProtocol={savePatientProtocol} updatePatientFiles={updatePatientFiles} onClose={()=>setViewP(null)} onDischarge={()=>{}}/>}
   </div>);
 }
 
@@ -4041,6 +4236,7 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
       <h1 className="text-white text-[20px] font-bold mt-1" style={{fontFamily:HEAD}}>{patient.name}</h1>
       <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:C.teal,color:C.ink}}>{visit.type}</span></div>
     <div className="px-4 pt-4 space-y-3">
+      {hasProtocol(patient.protocol)&&<ProtocolBanner protocol={patient.protocol}/>}
       {!isAssess&&lastAssess&&<div className="rounded-xl px-3.5 py-2.5 flex gap-2" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`}}><Activity size={15} color="#2E6E73" className="flex-shrink-0 mt-0.5"/><p className="text-[12px]" style={{color:C.ink2}}>Carried from assessment: <b>{lastAssess.dx?.label||"dx"}</b>. No need to re-enter.</p></div>}
       {/* Session date — when the session actually took place */}
       <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${sessionDate!==_today?C.amber:C.line}`}}>

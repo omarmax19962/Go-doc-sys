@@ -24,6 +24,24 @@ export const toDoctor = (d) => ({
   email: d.email ? d.email.trim() : null,
 })
 
+// ---- CONSULTANTS (referring ortho/neuro doctors) ----
+export const fromConsultant = (r) => ({
+  id: r.id,
+  name: r.name,
+  email: r.email || '',
+  phone: r.phone || '',
+  specialty: r.specialty || '',
+  clinic: r.clinic || '',
+  userId: r.user_id || null,
+})
+export const toConsultant = (c) => ({
+  name: c.name,
+  email: c.email ? c.email.trim() : null,
+  phone: c.phone ? c.phone.trim() : null,
+  specialty: c.specialty || null,
+  clinic: c.clinic || null,
+})
+
 // ---- PATIENTS ----
 export const fromPatient = (r) => ({
   id: r.id,
@@ -45,6 +63,9 @@ export const fromPatient = (r) => ({
   statusHistory: r.status_history || [],
   discharge: r.discharge || null,
   source: r.source || '',
+  referrerId: r.referrer_id ?? null,
+  referrerConsent: !!r.referrer_consent,
+  protocol: r.protocol || null,
   createdAt: r.created_at || null,
 })
 export const toPatient = (p) => ({
@@ -66,6 +87,9 @@ export const toPatient = (p) => ({
   status_history: p.statusHistory || [],
   discharge: p.discharge || null,
   source: p.source ? p.source.trim() : null,
+  referrer_id: p.referrerId ?? null,
+  referrer_consent: !!p.referrerConsent,
+  protocol: p.protocol || null,
 })
 
 // ---- VISITS ----
