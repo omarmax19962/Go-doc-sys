@@ -15,6 +15,7 @@ import { useDataStore } from "./lib/useDataStore";
 import { localSimplify, summaryFor, progressOverview } from "./lib/patientSummary";
 import { openWhatsApp } from "./lib/wa";
 import { referralConfirmation, weeklyDigest, redFlagAlert, dischargeSummary } from "./lib/consultantMsg";
+import { outcomesForDx, roadmapProgress } from "./lib/functionalOutcomes";
 import { planForDx } from "./lib/rehab";
 import { ensureNotifyPermission, notifPermission, notifSupported, subscribeToPush } from "./lib/push";
 import Login from "./components/Login";
@@ -884,6 +885,18 @@ const printPatientReport = (patient, notes, lang="en", consultantName="") => {
   const startPain = withPain[0] ? (withPain[0].painBefore ?? withPain[0].painAfter) : null;
   const endPain = withPain.length ? (withPain[withPain.length-1].painAfter ?? withPain[withPain.length-1].painBefore) : null;
   const overview = progressOverview(hist, lang);
+  // Case-specific FUNCTIONAL framework (the hero of the report — not pain).
+  const tpl = outcomesForDx(patient.dx);
+  const prog = roadmapProgress({ template: tpl, protocol: patient.protocol, sessions: hist.length });
+  const tl = o => ar ? (o?.ar || o?.en || "") : (o?.en || "");
+  const phaseLabel = patient.protocol?.phase ? patient.protocol.phase : (ar ? "إعادة التأهيل" : "Rehabilitation");
+  const roadHtml = tpl.milestones.map((mm,i)=>{
+    const cls = i<prog.currentIndex?"ms-ok":i===prog.currentIndex?"ms-now":"ms-next";
+    const mk = i<prog.currentIndex?"&#10003;":i===prog.currentIndex?"&#9679;":(i+1);
+    const tag = i===prog.currentIndex?`<span class="tag">${ar?"الآن":"now"}</span>`:"";
+    return `<li class="${cls}"><span class="mk">${mk}</span><span>${esc(tl(mm))}${tag}</span></li>`;
+  }).join("");
+  const promsHtml = tpl.proms.map(p=>`<div class="prom"><b>${esc(p.abbr)}</b>${esc(tl(p))}</div>`).join("");
   const fmtDate = d => { try { return new Date(d+"T00:00:00").toLocaleDateString(ar?"ar-EG":"en-GB",{day:"numeric",month:"long",year:"numeric"}); } catch { return d; } };
   const t = ar ? {
     title:"تقرير تقدّم العلاج", sub:"العلاج الطبيعي والرعاية المنزلية", patient:"المريض", doctor:"الطبيب المعالج",
@@ -924,6 +937,28 @@ const printPatientReport = (patient, notes, lang="en", consultantName="") => {
     .stat .v{font-size:24px;font-weight:800;margin-top:2px;}
     .ov{background:#EAF6F4;border:1px solid #Bfe3dc;border-radius:14px;padding:16px 18px;font-size:15px;line-height:1.75;margin-bottom:22px;}
     .ov b.h{display:flex;align-items:center;gap:8px;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:#2E6E73;margin-bottom:6px;}
+    .hero{background:#0F2A2E;color:#fff;border-radius:16px;padding:20px 22px;margin-bottom:18px;}
+    .hero .case{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#7DD8DF;font-weight:700;}
+    .hero .goal{font-size:18px;font-weight:800;line-height:1.45;margin:5px 0 14px;font-family:Georgia,serif;}
+    .hero .barwrap{display:flex;align-items:center;gap:12px;}
+    .bar{flex:1;height:11px;background:rgba(255,255,255,.16);border-radius:999px;overflow:hidden;}
+    .bar i{display:block;height:100%;background:#3FB6A8;border-radius:999px;}
+    .hero .pct{font-size:20px;font-weight:800;}
+    .hero .phase{font-size:12.5px;color:#cfe7e2;margin-top:10px;}
+    .hero .phase b{color:#fff;}
+    .road{list-style:none;padding:0;margin:0 0 22px;}
+    .road li{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px dashed #E6EBEE;font-size:14px;}
+    .road li:last-child{border-bottom:none;}
+    .road .mk{width:22px;height:22px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;}
+    .ms-ok .mk{background:#3FA796;color:#fff;} .ms-ok{color:#1E2A3A;}
+    .ms-now .mk{background:#0F2A2E;color:#fff;} .ms-now{color:#0F2A2E;font-weight:700;}
+    .ms-next .mk{background:#EBF0F1;color:#8794A1;border:1px solid #d8e0e1;} .ms-next{color:#8794A1;}
+    .ms-now .tag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#fff;background:#3FA796;padding:2px 7px;border-radius:999px;margin-${ar?"right":"left"}:8px;}
+    .proms{display:flex;gap:9px;flex-wrap:wrap;margin:2px 0 22px;}
+    .prom{background:#F3F6F7;border:1px solid #E6EBEE;border-radius:11px;padding:9px 12px;font-size:12.5px;min-width:150px;flex:1;}
+    .prom b{display:block;color:#1E2A3A;font-size:13px;margin-bottom:2px;}
+    .rts{background:#FBF4E6;border:1px solid #EAD5A8;border-radius:12px;padding:12px 15px;font-size:13px;color:#6b5418;margin-bottom:22px;}
+    .src{font-size:10.5px;color:#9aa6a8;font-style:italic;margin:-10px 0 22px;}
     .secH{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#5b6675;margin:0 0 10px;}
     .scard{border:1px solid #E6EBEE;border-radius:12px;padding:13px 16px;margin-bottom:11px;}
     .shead{display:flex;align-items:center;gap:9px;margin-bottom:5px;font-size:14px;}
@@ -946,12 +981,24 @@ const printPatientReport = (patient, notes, lang="en", consultantName="") => {
       ${patient.doctor&&patient.doctor!=="—"?`<div><span>${t.doctor}: </span><b>${esc(patient.doctor)}</b></div>`:""}
       ${consultantName?`<div><span>${ar?"تحت إشراف":"Supervised by"}: </span><b>${esc(consultantName)}</b></div>`:""}
     </div>
+    <div class="hero">
+      <div class="case">${esc(tl(tpl.name))}</div>
+      <div class="goal">${esc(tl(tpl.hero))}</div>
+      <div class="barwrap"><div class="bar"><i style="width:${prog.pct}%"></i></div><div class="pct">${prog.pct}%</div></div>
+      <div class="phase">${ar?"المرحلة الحالية":"Current stage"}: <b>${esc(phaseLabel)}</b> — ${ar?"التركيز الآن على":"now working toward"}: <b>${esc(tl(tpl.milestones[prog.currentIndex]))}</b></div>
+    </div>
     <div class="stats">
       <div class="stat"><div class="l">${t.sessions}</div><div class="v" style="color:#1E2A3A;">${hist.length}</div></div>
-      <div class="stat"><div class="l">${t.startPain}</div><div class="v" style="color:#C0392B;">${startPain??"–"}</div></div>
-      <div class="stat"><div class="l">${t.nowPain}</div><div class="v" style="color:#3FA796;">${endPain??"–"}</div></div>
+      <div class="stat"><div class="l">${ar?"تقدّم الوظيفة":"Functional progress"}</div><div class="v" style="color:#3FA796;">${prog.pct}%</div></div>
+      <div class="stat"><div class="l">${ar?"الألم (البداية→الآن)":"Pain (start → now)"}</div><div class="v" style="color:#5b6675;font-size:20px;">${startPain??"–"} <span style="color:#8794A1;">→</span> ${endPain??"–"}</div></div>
     </div>
-    <div class="ov"><b class="h">&#10084; ${t.overviewH}</b>${esc(overview)}</div>
+    <div class="ov"><b class="h">&#127919; ${ar?"رحلتك العلاجية":"Your recovery so far"}</b>${esc(overview)}</div>
+    <div class="secH">${ar?"خريطة تعافيك — أين أنت الآن":"Your recovery roadmap — where you are now"}</div>
+    <ul class="road">${roadHtml}</ul>
+    <div class="secH">${ar?"كيف نقيس تقدّمك":"How we track your progress"}</div>
+    <div class="proms">${promsHtml}</div>
+    <div class="rts">&#127937; <b>${ar?"هدف الرجوع للنشاط":"Return-to-activity goal"}:</b> ${esc(tl(tpl.rts))}</div>
+    <div class="src">${ar?"المصدر":"Evidence"}: ${esc(tpl.source)}</div>
     <div class="secH">${t.sessionH}</div>
     ${cards}
     <div class="foot">${t.foot}<br>Ref ${esc(ref)} · ${esc(fmtDate(today))}</div>
@@ -3769,7 +3816,7 @@ function LibraryTab({exerciseLib,modalityLib,setExerciseLib,setModalityLib}){
 }
 
 /* ---------- Settings: editable single-row config ---------- */
-function SettingsTab({config,updateConfig}){
+function SettingsTab({config,updateConfig,consultants=[],addConsultant,removeConsultant}){
   const[draft,setDraft]=useState(config);
   const dirty=draft.defaultFee!==config.defaultFee||draft.defaultPct!==config.defaultPct||draft.currency!==config.currency;
   const save=()=>updateConfig(draft);
