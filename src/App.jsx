@@ -16,6 +16,7 @@ import { localSimplify, summaryFor, progressOverview } from "./lib/patientSummar
 import { openWhatsApp } from "./lib/wa";
 import { referralConfirmation, weeklyDigest, redFlagAlert, dischargeSummary } from "./lib/consultantMsg";
 import { outcomesForDx, roadmapProgress } from "./lib/functionalOutcomes";
+import PublicBooking from "./components/PublicBooking";
 import { planForDx } from "./lib/rehab";
 import { ensureNotifyPermission, notifPermission, notifSupported, subscribeToPush } from "./lib/push";
 import Login from "./components/Login";
@@ -1437,7 +1438,20 @@ function NotifBell({items,onOpen,onNavigate,dark}){
 }
 
 /* =============================== APP =============================== */
+// Public, no-login routes (the patient booking link) are served before the
+// auth gate so anyone with the link can use them.
+function isBookingRoute(){
+  if (typeof window === 'undefined') return false;
+  const p = window.location.pathname.replace(/\/+$/,'');
+  const h = window.location.hash || '';
+  return p === '/book' || h.startsWith('#/book') || h.startsWith('#book');
+}
 export default function App(){
+  if (isBookingRoute()) return <PublicBooking/>;
+  return <AuthedApp/>;
+}
+
+function AuthedApp(){
   const { user, profile, role, loading: authLoading, signOut } = useAuth();
   if (authLoading) return <FullScreenLoading label="Loading…" />;
   if (!user) return <Login />;
@@ -1466,11 +1480,12 @@ function AppWithData({ role, me, onSignOut }){
   if (store.error) return <FullScreenError msg={`Database error: ${store.error}. Check that the schema.sql has been run.`} onSignOut={onSignOut} />;
 
   const {
-    doctors, consultants, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks,
+    doctors, consultants, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks, bookingRequests,
     addTask, updateTask, removeTask,
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview, savePatientSummary, aiSimplifyNote,
     addConsultant, removeConsultant, setReferrer, savePatientProtocol,
+    assignBookingDoctor, doctorConfirmBooking, declineBooking, confirmBooking,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     updateFinance, settleFinances, removeFinance, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
@@ -1486,10 +1501,10 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,consultants,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,consultants,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,bookingRequests,assignBookingDoctor,doctorConfirmBooking,declineBooking,confirmBooking,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
         : role==="consultant"
         ? <Consultant {...{patients,visits,notes,me,consultants,config,savePatientProtocol,updatePatientFiles,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests,doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
 }
@@ -1916,14 +1931,82 @@ function Dashboard({patients,visits,notes,finances,credits=[],doctors,tasks,name
   </>);
 }
 
-function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
+/* WhatsApp confirmation text sent to the patient once a booking is confirmed. */
+function bookingWhatsApp(b, clinic="Go Doc"){
+  const dt = b.date && b.time ? `${b.date} at ${b.time}` : "your session";
+  const dr = b.doctorName ? ` with ${b.doctorName}` : "";
+  const comp = b.complaint ? `\nRegarding: ${b.complaint}` : "";
+  return `Hello${b.name?` ${b.name.split(" ")[0]}`:""}, this is ${clinic}. Your physiotherapy session is confirmed for ${dt}${dr}.${comp}\nWe'll see you then — reply here if you need to change anything.`;
+}
+
+/* Admin inbox for the public booking link: assign a doctor, await their
+   confirmation, confirm, and WhatsApp the patient. Holds expire after 48h. */
+function BookingsInbox({bookingRequests=[],doctors=[],config,assignBookingDoctor,doctorConfirmBooking,declineBooking,confirmBooking,openPatient}){
+  const[filter,setFilter]=useState("active");
+  const clinic=config?.clinicName||"Go Doc";
+  const fmtBookDate=(d)=>{try{return new Date(d+"T00:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});}catch{return d;}};
+  const slotDocs=(date,time)=>{try{const wd=DAYS[new Date(date+"T00:00:00").getDay()];return doctors.filter(d=>(d.slots||[]).includes(`${wd}-${time}`));}catch{return[];}};
+  const hoursLeft=(b)=>{if(!b.expiresAt)return null;const ms=new Date(b.expiresAt)-new Date();return ms>0?Math.floor(ms/3600000):0;};
+  const order={pending:0,doctor_confirmed:1,confirmed:2,declined:3,expired:4};
+  const list=(bookingRequests||[]).filter(b=>filter==="all"?true:filter==="active"?["pending","doctor_confirmed"].includes(b.status):filter==="confirmed"?b.status==="confirmed":["declined","expired"].includes(b.status))
+    .slice().sort((a,b)=>(order[a.status]-order[b.status])||(a.date||"").localeCompare(b.date||"")||(a.time||"").localeCompare(b.time||""));
+  const STBADGE={pending:["New",C.amber],doctor_confirmed:["Doctor confirmed",C.teal],confirmed:["Confirmed",C.green],declined:["Declined",C.red],expired:["Expired",C.grey]};
+  return(<div className="space-y-3">
+    <div className="flex items-center justify-between gap-2 flex-wrap">
+      <div><h2 className="text-[18px] font-bold" style={{fontFamily:HEAD}}>Online bookings</h2><p className="text-[12px] max-w-[520px]" style={{color:C.grey}}>Requests from the public booking link. Assign a doctor → the doctor confirms availability → you confirm and message the patient. Unconfirmed holds release automatically after 48 hours.</p></div>
+      <div className="flex gap-1.5">{[["active","Needs action"],["confirmed","Confirmed"],["closed","Closed"],["all","All"]].map(([k,l])=>(<button key={k} onClick={()=>setFilter(k)} className="px-3 py-1.5 rounded-full text-[12px] font-semibold" style={{background:filter===k?C.ink:"#fff",color:filter===k?"#fff":C.ink2,border:`1px solid ${filter===k?C.ink:C.line}`}}>{l}</button>))}</div>
+    </div>
+    {list.length===0&&<div className="bg-white rounded-2xl p-8 text-center text-[13px]" style={{border:`1px solid ${C.line}`,color:C.grey}}>No bookings here yet. Share your booking link: <b>go-doc-sys.vercel.app/book</b></div>}
+    {list.map(b=>{const docs=slotDocs(b.date,b.time);const hl=hoursLeft(b);const badge=STBADGE[b.status]||["",C.grey];return(
+      <div key={b.id} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2"><span className="text-[15px] font-bold" style={{color:C.ink}}>{b.name||"(no name given)"}</span><span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:badge[1]+"22",color:badge[1]}}>{badge[0]}</span></div>
+            <div className="text-[12.5px] mt-0.5" style={{color:C.ink2}}><b>{fmtBookDate(b.date)} · {b.time}</b></div>
+            <div className="text-[12px]" style={{color:C.grey}}>{b.phone}{b.area?` · ${b.area}`:""}</div>
+            {b.complaint&&<div className="text-[12px] mt-1" style={{color:C.ink2}}>“{b.complaint}”</div>}
+          </div>
+          {(b.status==="pending"||b.status==="doctor_confirmed")&&hl!=null&&<div className="text-[11px] font-bold whitespace-nowrap" style={{color:hl<12?C.red:C.grey}}>{hl>0?`${hl}h left`:"expiring…"}</div>}
+        </div>
+
+        {(b.status==="pending"||b.status==="doctor_confirmed")&&<div className="mt-3 pt-3" style={{borderTop:`1px solid ${C.line}`}}>
+          {!b.doctorName
+            ? (docs.length>0
+              ? <div className="flex flex-wrap items-center gap-2"><span className="text-[12px] font-semibold" style={{color:C.ink2}}>Available doctors for this slot:</span>
+                  {docs.map(d=><button key={d.id} onClick={()=>assignBookingDoctor(b.id,d.name)} className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-white" style={{background:C.teal}}>{d.name}</button>)}</div>
+              : <div className="text-[12px]" style={{color:C.amber}}>No doctor has this exact slot in their availability — assign manually:
+                  <div className="flex flex-wrap gap-2 mt-1.5">{doctors.map(d=><button key={d.id} onClick={()=>assignBookingDoctor(b.id,d.name)} className="px-3 py-1.5 rounded-lg text-[12px] font-bold" style={{background:"#fff",color:C.ink,border:`1px solid ${C.line}`}}>{d.name}</button>)}</div></div>)
+            : <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[12px]" style={{color:C.ink2}}>Doctor: <b>{b.doctorName}</b></span>
+                {b.doctorConfirmed
+                  ? <span className="text-[12px] font-semibold flex items-center gap-1" style={{color:C.green}}><Check size={13}/>availability confirmed</span>
+                  : <span className="text-[12px]" style={{color:C.amber}}>waiting for the doctor to confirm…</span>}
+                <button onClick={()=>assignBookingDoctor(b.id,"")} className="text-[11px] underline" style={{color:C.grey}}>reassign</button>
+              </div>}
+          <div className="flex items-center gap-2 mt-3">
+            <button disabled={!b.doctorConfirmed} onClick={()=>confirmBooking(b.id)} className="px-3.5 py-2 rounded-xl text-[12px] font-bold text-white disabled:opacity-40" style={{background:C.green}}>Confirm booking</button>
+            <button onClick={()=>declineBooking(b.id)} className="px-3 py-2 rounded-xl text-[12px] font-bold" style={{background:"#FCEDEA",color:C.red}}>Decline</button>
+          </div>
+          {b.doctorName&&!b.doctorConfirmed&&<p className="text-[11px] mt-1.5" style={{color:C.grey}}>You can confirm once the doctor confirms their availability (they were notified).</p>}
+        </div>}
+
+        {b.status==="confirmed"&&<div className="mt-3 pt-3 flex flex-wrap items-center gap-2" style={{borderTop:`1px solid ${C.line}`}}>
+          <span className="text-[12px]" style={{color:C.green}}>Confirmed with <b>{b.doctorName}</b></span>
+          <button onClick={()=>openWhatsApp(b.phone,bookingWhatsApp(b,clinic))} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:"rgba(63,167,150,1)"}}><MessageCircle size={14}/>Send WhatsApp confirmation</button>
+        </div>}
+      </div>);})}
+  </div>);
+}
+
+function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,bookingRequests=[],assignBookingDoctor,doctorConfirmBooking,declineBooking,confirmBooking,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   // Notification deep-link: a tapped notification jumps to the relevant place.
   // A `view` (tab) takes priority; otherwise open the patient's file.
   const navigate=(link)=>{if(!link)return;if(link.view){setTab(link.view);}else if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}};
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
-  const tabs=[["today","Today",LayoutGrid],["calendar","Calendar",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["tasks","Tasks",ListChecks],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
+  const newBookings=(bookingRequests||[]).filter(b=>b.status==="pending"||b.status==="doctor_confirmed").length;
+  const tabs=[["today","Today",LayoutGrid],["calendar","Calendar",CalendarDays],["bookings","Bookings",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["tasks","Tasks",ListChecks],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
   const openTasks=(tasks||[]).filter(t=>t.status!=="done").length;
   const docNames=doctors.map(d=>d.name);
 
@@ -1948,7 +2031,7 @@ function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib
     </header>
     <div className="flex gap-1 px-4 sm:px-6 py-2.5 overflow-x-auto" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
       {tabs.map(([k,l,Icon])=>(<button key={k} onClick={()=>setTab(k)} className="flex items-center gap-2 px-3.5 py-2 rounded-full text-[13px] font-semibold whitespace-nowrap" style={{background:tab===k?C.teal:"transparent",color:tab===k?C.ink:C.grey}}>
-        <Icon size={15}/>{l}{k==="review"&&pending>0&&<span className="text-[11px] px-1.5 rounded-full font-bold" style={{background:C.red,color:"#fff"}}>{pending}</span>}{k==="tasks"&&openTasks>0&&<span className="text-[11px] px-1.5 rounded-full font-bold" style={{background:C.ink,color:"#fff"}}>{openTasks}</span>}</button>))}
+        <Icon size={15}/>{l}{k==="review"&&pending>0&&<span className="text-[11px] px-1.5 rounded-full font-bold" style={{background:C.red,color:"#fff"}}>{pending}</span>}{k==="tasks"&&openTasks>0&&<span className="text-[11px] px-1.5 rounded-full font-bold" style={{background:C.ink,color:"#fff"}}>{openTasks}</span>}{k==="bookings"&&newBookings>0&&<span className="text-[11px] px-1.5 rounded-full font-bold" style={{background:C.red,color:"#fff"}}>{newBookings}</span>}</button>))}
     </div>
 
     <div className="flex-1 overflow-y-auto p-4 sm:p-6">
@@ -1957,6 +2040,7 @@ function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib
 
       {/* CALENDAR — operational multi-doctor view (§3.2) */}
       {tab==="calendar"&&<AdminCalendar visits={visits} patients={patients} doctors={doctors} notes={notes} nameOf={nameOf} updateVisitStatus={updateVisitStatus} sendReminder={sendReminder} resolveReschedule={resolveReschedule} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} approveVisit={approveVisit} bookSession={bookSession}/>}
+      {tab==="bookings"&&<BookingsInbox bookingRequests={bookingRequests} doctors={doctors} config={config} assignBookingDoctor={assignBookingDoctor} doctorConfirmBooking={doctorConfirmBooking} declineBooking={declineBooking} confirmBooking={confirmBooking} openPatient={id=>setViewP({id})}/>}
 
       {/* PATIENTS — incl. assign-doctor + admin-only payment */}
       {tab==="patients"&&<>
@@ -4134,7 +4218,7 @@ function Consultant({patients=[],visits=[],notes=[],me,consultants=[],config,sav
   </div>);
 }
 
-function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}){
+function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests=[],doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}){
   const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);const[booking,setBooking]=useState(null);
   // Notification deep-link: jump to a tab (view) or open the patient's file.
   const navigate=(link)=>{if(!link)return;if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}else if(link.view){const t=link.view==="review"||link.view==="finances"?"patients":link.view==="calendar"?"calendar":link.view;setTab(t);}};
@@ -4165,6 +4249,17 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
         {tab==="visits"&&<button onClick={()=>setPicker(true)} className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-[14px]" style={{background:"#fff",color:C.ink}}><Plus size={16}/>Log a session</button>}
       </div>
 
+      {tab==="visits"&&(()=>{const toConfirm=(bookingRequests||[]).filter(b=>b.doctorName===me&&b.status==="pending"&&!b.doctorConfirmed);return toConfirm.length>0&&<div className="px-4 pt-4 space-y-2.5">
+        {toConfirm.map(b=>(<div key={b.id} className="rounded-2xl p-3.5" style={{background:"#FBF4E6",border:`1px solid #EAD5A8`}}>
+          <div className="flex items-center gap-2 mb-1"><CalendarDays size={15} color={C.amber}/><b className="text-[13px]" style={{color:C.ink,fontFamily:HEAD}}>New booking — confirm your availability</b></div>
+          <div className="text-[13px]" style={{color:C.ink2}}><b>{b.date}{b.time?` · ${to12(b.time)}`:""}</b>{b.area?` · ${b.area}`:""}</div>
+          <div className="text-[12px]" style={{color:C.grey}}>{b.name||"Patient"}{b.complaint?` — ${b.complaint}`:""}</div>
+          <div className="flex items-center gap-2 mt-2.5">
+            <button onClick={()=>doctorConfirmBooking(b.id,true)} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold text-white" style={{background:C.green}}><Check size={14}/>I'm available</button>
+            <button onClick={()=>doctorConfirmBooking(b.id,false)} className="px-3 py-2 rounded-xl text-[12px] font-bold" style={{background:"#fff",color:C.red,border:`1px solid ${C.line}`}}>Not available</button>
+          </div>
+        </div>))}
+      </div>;})()}
       {tab==="visits"&&<div className="p-4">{mine.length===0&&<p className="text-[13px] text-center mt-6" style={{color:C.grey}}>No upcoming visits — tap “Log a session” to log one independently.</p>}
         {mine.map(v=>{const p=pOf(v.patientId);return(<div key={v.id} className="bg-white rounded-2xl p-4 mb-3" style={{border:`1px solid ${C.line}`}}>
           <button onClick={()=>setActive({visit:v,patient:p})} className="w-full text-left">

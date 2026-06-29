@@ -8,6 +8,7 @@ import {
   fromNote, toNote,
   fromExercise, toExercise,
   fromModality, toModality,
+  fromBooking,
   fromFinance, toFinance,
   fromCredit, toCredit,
   fromExpense, toExpense,
@@ -51,6 +52,7 @@ export function useDataStore({ role, me }) {
   const [config, setConfigState] = useState({ defaultFee: 500, defaultPct: 0.6, currency: 'EGP', noShowConsumesSlot: true, packageCreationTiming: 'post_assessment' })
   const [notifs, setNotifs] = useState([])
   const [tasks, setTasks] = useState([])
+  const [bookingRequests, setBookingRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const meRef = useRef(me)
@@ -87,7 +89,7 @@ export function useDataStore({ role, me }) {
         : supabase.from('notifications').select('*').order('ts', { ascending: false }).limit(50)
       // admin-only ledgers — skip for doctors and consultants
       const ledgerSkip = isDoctor || isConsultant
-      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm, tk, cr, co] = await Promise.all([
+      const [d, p, v, n, ex, m, f, c, notes_n, pk, exp, gm, tk, cr, co, bk] = await Promise.all([
         supabase.from('doctors').select('*').order('id'), // small table, needed for name/colour lookups
         scoped('patients', 'doctor'),
         scoped('visits', 'doctor_name'),
@@ -104,10 +106,15 @@ export function useDataStore({ role, me }) {
         ledgerSkip ? Promise.resolve({ data: [] }) : supabase.from('credits').select('*').order('id'),
         // referring consultants — admin/doctor read all; a consultant reads only self (RLS)
         supabase.from('consultants').select('*').order('id'),
+        // public booking requests — admin sees all, doctor sees assigned (RLS)
+        isConsultant ? Promise.resolve({ data: [] }) : supabase.from('booking_requests').select('*').order('id', { ascending: false }),
       ])
       if (d.error) throw d.error
+      // sweep expired holds so the inbox status stays honest
+      if (!isConsultant) supabase.rpc('expire_stale_bookings').catch(() => {})
       setDoctors((d.data || []).map(fromDoctor))
       setConsultants((co.data || []).map(fromConsultant))
+      setBookingRequests((bk.data || []).map(fromBooking))
       setPatients((p.data || []).map(fromPatient))
       setVisits((v.data || []).map(fromVisit))
       setNotes((n.data || []).map(fromNote))
@@ -149,6 +156,10 @@ export function useDataStore({ role, me }) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, reVisits)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'packages' }, rePackages)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'booking_requests' }, () => {
+        if (isConsultant) return
+        supabase.from('booking_requests').select('*').order('id', { ascending: false }).then(({ data }) => setBookingRequests((data || []).map(fromBooking)))
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
         if (isDoctor) return
         supabase.from('expenses').select('*').order('id').then(({ data }) => setExpenses((data || []).map(fromExpense)))
@@ -627,6 +638,59 @@ export function useDataStore({ role, me }) {
     if (error) console.error('savePatientProtocol', error)
   }, [])
 
+  // ---- PUBLIC BOOKING REQUESTS (admin/doctor side) ----
+  // Admin assigns a doctor to a pending request and asks them to confirm.
+  const assignBookingDoctor = useCallback(async (id, doctorName) => {
+    setBookingRequests((bs) => bs.map((b) => b.id === id ? { ...b, doctorName, doctorConfirmed: false, status: 'pending' } : b))
+    await supabase.from('booking_requests').update({ doctor_name: doctorName, doctor_confirmed: false, status: 'pending' }).eq('id', id)
+    const b = bookingRequests.find((x) => x.id === id)
+    if (doctorName) notify('doctor', `New booking to confirm: ${b?.name || 'a patient'} on ${b?.date || ''} ${b?.time || ''} — confirm your availability.`, doctorName, { booking: id })
+  }, [bookingRequests, notify])
+
+  // Assigned doctor confirms (or declines) their availability.
+  const doctorConfirmBooking = useCallback(async (id, ok = true) => {
+    const b = bookingRequests.find((x) => x.id === id)
+    if (ok) {
+      setBookingRequests((bs) => bs.map((x) => x.id === id ? { ...x, doctorConfirmed: true, status: 'doctor_confirmed' } : x))
+      await supabase.from('booking_requests').update({ doctor_confirmed: true, status: 'doctor_confirmed' }).eq('id', id)
+      notify('admin', `${b?.doctorName || 'Doctor'} confirmed availability for ${b?.name || 'a patient'} (${b?.date} ${b?.time}) — confirm & message the patient.`, null, { booking: id })
+    } else {
+      setBookingRequests((bs) => bs.map((x) => x.id === id ? { ...x, doctorConfirmed: false, status: 'pending', doctorName: '' } : x))
+      await supabase.from('booking_requests').update({ doctor_confirmed: false, status: 'pending', doctor_name: null }).eq('id', id)
+      notify('admin', `${b?.doctorName || 'A doctor'} is not available for ${b?.name || 'a patient'} (${b?.date} ${b?.time}) — please reassign.`, null, { booking: id })
+    }
+  }, [bookingRequests, notify])
+
+  const declineBooking = useCallback(async (id) => {
+    setBookingRequests((bs) => bs.map((x) => x.id === id ? { ...x, status: 'declined' } : x))
+    await supabase.from('booking_requests').update({ status: 'declined' }).eq('id', id)
+  }, [])
+
+  // Admin confirms the booking: creates a patient + scheduled visit and links it.
+  const confirmBooking = useCallback(async (id) => {
+    const b = bookingRequests.find((x) => x.id === id)
+    if (!b || !b.doctorName) return
+    const { data: pData } = await supabase.from('patients').insert(toPatient({
+      name: b.name || ('Booking ' + id), phone: b.phone, complaint: b.complaint,
+      zone: b.area, status: 'booked', doctor: b.doctorName, source: 'Online booking',
+      statusHistory: [{ from: null, to: 'booked', by: 'Admin', note: 'Online booking confirmed', at: nowISO() }],
+    })).select().single()
+    const patientId = pData?.id
+    let visitId = null
+    if (patientId) {
+      const { data: vData } = await supabase.from('visits').insert({
+        patient_id: patientId, doctor_name: b.doctorName, type: 'Assessment',
+        time: b.time, date: b.date, status: 'scheduled', booked_by: 'patient',
+        created_by: 'admin', approved: true,
+      }).select().single()
+      visitId = vData?.id || null
+    }
+    setBookingRequests((bs) => bs.map((x) => x.id === id ? { ...x, status: 'confirmed', adminConfirmed: true, visitId } : x))
+    await supabase.from('booking_requests').update({ status: 'confirmed', admin_confirmed: true, visit_id: visitId }).eq('id', id)
+    loadAll()
+    notify('doctor', `Booking confirmed: ${b.name || 'patient'} on ${b.date} ${b.time}.`, b.doctorName, { patientId })
+  }, [bookingRequests, notify, loadAll])
+
   const dischargePatient = useCallback(async (pid, report) => {
     const pt = patients.find((p) => p.id === pid)
     setPatients((ps) => ps.map((p) => p.id === pid ? { ...p, discharge: report } : p))
@@ -1065,13 +1129,14 @@ export function useDataStore({ role, me }) {
 
   return {
     // data
-    doctors, consultants, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks,
+    doctors, consultants, patients, visits, notes, exerciseLib, modalityLib, finances, credits, expenses, growthMonths, config, notifs, packages, tasks, bookingRequests,
     loading, error,
     // mutations
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview, savePatientSummary, aiSimplifyNote,
     addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
     addConsultant, removeConsultant, setReferrer, savePatientProtocol,
+    assignBookingDoctor, doctorConfirmBooking, declineBooking, confirmBooking,
     updateFinance, settleFinances, removeFinance, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, requestReschedule, resolveReschedule,

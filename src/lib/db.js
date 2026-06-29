@@ -266,6 +266,25 @@ export const toExercise = (e) => ({
 export const fromModality = (r) => ({ id: r.id, name: r.name, params: r.params })
 export const toModality = (m) => ({ name: m.name, params: m.params })
 
+// ---- PUBLIC BOOKING REQUESTS ----
+export const fromBooking = (r) => ({
+  id: r.id,
+  name: r.name || '',
+  phone: r.phone || '',
+  complaint: r.complaint || '',
+  area: r.area || '',
+  date: r.requested_date,
+  time: r.requested_time,
+  status: r.status,
+  doctorName: r.doctor_name || '',
+  doctorConfirmed: !!r.doctor_confirmed,
+  adminConfirmed: !!r.admin_confirmed,
+  visitId: r.visit_id || null,
+  note: r.note || '',
+  createdAt: r.created_at,
+  expiresAt: r.expires_at,
+})
+
 // ---- FINANCES ----
 export const fromFinance = (r) => ({
   id: r.id,
