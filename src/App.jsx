@@ -896,7 +896,14 @@ const printPatientReport = (patient, notes, lang="en", consultantName="") => {
     const tag = i===prog.currentIndex?`<span class="tag">${ar?"الآن":"now"}</span>`:"";
     return `<li class="${cls}"><span class="mk">${mk}</span><span>${esc(tl(mm))}${tag}</span></li>`;
   }).join("");
-  const promsHtml = tpl.proms.map(p=>`<div class="prom"><b>${esc(p.abbr)}</b>${esc(tl(p))}</div>`).join("");
+  // Measured functional scores captured across the sessions (real numbers).
+  const scoreSeries = {};
+  hist.forEach(n=>{ const fs=n.functionalScores||{}; Object.keys(fs).forEach(k=>{ const v=fs[k]; if(v!==""&&v!=null&&!isNaN(+v)){ (scoreSeries[k]=scoreSeries[k]||[]).push(+v); } }); });
+  const promsHtml = tpl.proms.map(p=>{
+    const s = scoreSeries[p.abbr];
+    const meas = s&&s.length ? `<span class="measv">${s[0]}${s.length>1?` &#8594; ${s[s.length-1]}`:""}</span>` : "";
+    return `<div class="prom"><b>${esc(p.abbr)}${meas}</b>${esc(tl(p))}</div>`;
+  }).join("");
   const fmtDate = d => { try { return new Date(d+"T00:00:00").toLocaleDateString(ar?"ar-EG":"en-GB",{day:"numeric",month:"long",year:"numeric"}); } catch { return d; } };
   const t = ar ? {
     title:"تقرير تقدّم العلاج", sub:"العلاج الطبيعي والرعاية المنزلية", patient:"المريض", doctor:"الطبيب المعالج",
@@ -957,6 +964,7 @@ const printPatientReport = (patient, notes, lang="en", consultantName="") => {
     .proms{display:flex;gap:9px;flex-wrap:wrap;margin:2px 0 22px;}
     .prom{background:#F3F6F7;border:1px solid #E6EBEE;border-radius:11px;padding:9px 12px;font-size:12.5px;min-width:150px;flex:1;}
     .prom b{display:block;color:#1E2A3A;font-size:13px;margin-bottom:2px;}
+    .measv{color:#3FA796;font-weight:800;margin-${ar?"right":"left"}:6px;}
     .rts{background:#FBF4E6;border:1px solid #EAD5A8;border-radius:12px;padding:12px 15px;font-size:13px;color:#6b5418;margin-bottom:22px;}
     .src{font-size:10.5px;color:#9aa6a8;font-style:italic;margin:-10px 0 22px;}
     .secH{font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#5b6675;margin:0 0 10px;}
@@ -4272,6 +4280,9 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
   const[subjective,setSubjective]=useState(""),[objective,setObjective]=useState(""),[measures,setMeasures]=useState("");
   const[assessment,setAssessment]=useState(""),[goals,setGoals]=useState(lastAssess?.goals||""),[hep,setHep]=useState(lastAssess?.hep||""),[education,setEducation]=useState("");
   const[additionalNotes,setAdditionalNotes]=useState("");
+  // Case-specific functional outcome measures (PROMs) captured per session.
+  const[fscores,setFscores]=useState({});
+  const fTpl=useMemo(()=>outcomesForDx(dx),[dx]);
   // Diagnosis-driven exercise protocol — surfaces condition-appropriate
   // exercises (evidence-based MSK guidelines) once a diagnosis is set.
   const dxPlan=useMemo(()=>planForDx(dx),[dx]);
@@ -4299,6 +4310,16 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
       <SoapSection letter="O" label="Objective" hint="What you observe & measure"/>
       <NoteArea label="Objective findings" hint="observation · palpation · gait · posture · swelling" value={objective} set={setObjective} rows={3} placeholder="Muscle tightness, tenderness on palpation, gait / posture abnormalities, visible deformity or swelling…"/>
       <NoteArea label="Tests & measures" hint="ROM · MMT/strength · special tests · outcome scores" value={measures} set={setMeasures} rows={3} placeholder="e.g. Knee flexion ROM 0–110°, quadriceps MMT 4/5, SLR negative, LEFS 48/80…"/>
+      {fTpl?.proms?.length>0&&<div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.tealSoft}`}}>
+        <div className="flex items-center gap-2"><TrendingUp size={15} color={C.teal}/><div className="text-[11px] font-bold uppercase" style={{color:C.grey}}>Functional outcome measures</div>
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{background:C.teal+"22",color:"#2E6E73"}}>{fTpl.name.en}</span></div>
+        <p className="text-[11px] mt-1 mb-2.5" style={{color:C.grey}}>Optional — enter any scores you measured. These power the patient's functional progress report with real numbers.</p>
+        <div className="space-y-2">{fTpl.proms.map(p=>(
+          <div key={p.abbr} className="flex items-center gap-3">
+            <div className="flex-1 min-w-0"><div className="text-[13px] font-bold" style={{color:C.ink}}>{p.abbr}</div><div className="text-[11px] truncate" style={{color:C.grey}}>{p.en}</div></div>
+            <input type="number" inputMode="decimal" value={fscores[p.abbr]??""} onChange={e=>setFscores(s=>({...s,[p.abbr]:e.target.value}))} placeholder="–" className="w-24 px-2.5 py-2 rounded-lg text-[14px] text-right outline-none bg-white" style={{border:`1px solid ${C.line}`}}/>
+          </div>))}</div>
+      </div>}
       <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${dxPlan?C.tealSoft:C.line}`}}>
         <div className="text-[11px] font-bold uppercase mb-2" style={{color:C.grey}}>Exercises done</div>
         {/* Diagnosis-driven protocol leads the list — the recommended set */}
@@ -4361,7 +4382,8 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
     <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-4 pt-3 pb-5" style={{background:`linear-gradient(to top, ${C.bg} 75%, transparent)`}}>
       <button disabled={!can} onClick={()=>onSubmit({visitId:visit.id,patientId:patient.id,patientName:patient.name,doctorName:visit.doctorName,type:visit.type,
         painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,nextSessionTime:nextTime,redFlag:rf,redFlagNote:rfn,dx,sessionDate,
-        subjective,objective,measures,assessment,goals,hep,education,additionalNotes})}
+        subjective,objective,measures,assessment,goals,hep,education,additionalNotes,
+        functionalScores:Object.fromEntries(Object.entries(fscores).filter(([k,v])=>v!==""&&v!=null))})}
         className="w-full py-4 rounded-2xl font-bold text-[15px] text-white" style={{background:can?C.ink:"#C9CDD2",boxShadow:can?"0 8px 20px rgba(30,42,58,0.25)":"none"}}>
         {can?"Complete & submit for review":isAssess?"Add diagnosis to submit":"Log pain + response"}</button></div>
     <DxSheet open={sheet} onClose={()=>setSheet(false)} onPick={setDx}/>

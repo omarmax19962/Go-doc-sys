@@ -209,6 +209,7 @@ export const fromNote = (r) => ({
   patientSummaryEn: r.patient_summary_en || '',
   patientSummaryAr: r.patient_summary_ar || '',
   patientSummaryEdited: !!r.patient_summary_edited,
+  functionalScores: r.functional_scores || null,
 })
 export const toNote = (n) => ({
   patient_id: n.patientId,
@@ -239,6 +240,7 @@ export const toNote = (n) => ({
   patient_summary_en: n.patientSummaryEn ? n.patientSummaryEn.trim() : null,
   patient_summary_ar: n.patientSummaryAr ? n.patientSummaryAr.trim() : null,
   patient_summary_edited: !!n.patientSummaryEdited,
+  functional_scores: (n.functionalScores && Object.keys(n.functionalScores).length) ? n.functionalScores : null,
 })
 
 // ---- EXERCISES ----
