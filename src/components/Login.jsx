@@ -3,67 +3,35 @@ import { supabase, hasSupabaseConfig } from '../lib/supabase'
 
 const C = { ink: '#0F2A2E', teal: '#3FB6A8', tealSoft: '#A9D9D1', bg: '#F4F1EA' }
 
-async function roleOfCurrentUser() {
-  const { data: u } = await supabase.auth.getUser()
-  if (!u?.user) return null
-  const { data } = await supabase.from('profiles').select('role').eq('id', u.user.id).maybeSingle()
-  return data?.role || null
-}
-
 export default function Login({ onSignedIn }) {
-  const [mode, setMode] = useState('admin') // 'admin' | 'doctor'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  const switchMode = (m) => { setMode(m); setErr('') }
-
+  // One sign-in for everyone. The app decides which view to show from the
+  // account's role (admin / doctor / consultant) on the profile — no tabs.
+  // If the email is pre-registered but has no password yet (doctors &
+  // consultants on first login), the same form sets it via sign-up.
   const submit = async (e) => {
     e.preventDefault()
     setErr(''); setBusy(true)
     try {
-      if (mode === 'admin') {
-        const { error } = await supabase.auth.signInWithPassword({ email, password })
-        if (error) { setErr('Invalid login credentials'); return }
-        if ((await roleOfCurrentUser()) !== 'admin') {
-          await supabase.auth.signOut()
-          setErr('This is not an admin account. Use the Doctor tab.')
-          return
-        }
-        onSignedIn?.()
-        return
-      }
-
-      // ---- Doctor ----
       const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (!error) {
-        if ((await roleOfCurrentUser()) !== 'doctor') {
-          await supabase.auth.signOut()
-          setErr('This is not a doctor account. Use the Admin tab.')
-          return
-        }
-        onSignedIn?.()
-        return
-      }
+      if (!error) { onSignedIn?.(); return }
 
-      // No password yet → first-time setup creates the account with this password.
+      // First-time set-up: sign-up succeeds only for emails an admin pre-added
+      // (the DB trigger restricts open sign-ups).
       const { data, error: upErr } = await supabase.auth.signUp({ email, password })
       if (upErr) {
         const m = (upErr.message || '').toLowerCase()
-        if (m.includes('already registered') || m.includes('already exists')) {
-          setErr('Incorrect password.')
-        } else if (m.includes('restricted') || m.includes('database error')) {
-          setErr('This email is not registered. Ask your admin to add you first.')
-        } else if (m.includes('at least') || m.includes('password')) {
-          setErr(upErr.message)
-        } else {
-          setErr(upErr.message || 'Could not sign in.')
-        }
+        if (m.includes('already registered') || m.includes('already exists')) setErr('Incorrect password.')
+        else if (m.includes('restricted') || m.includes('database error')) setErr('This email is not registered. Ask your admin to add you first.')
+        else if (m.includes('at least') || m.includes('password')) setErr(upErr.message)
+        else setErr(upErr.message || 'Could not sign in.')
         return
       }
       if (!data?.session) {
-        // Fallback: sign in explicitly if no session was returned.
         const { error: siErr } = await supabase.auth.signInWithPassword({ email, password })
         if (siErr) { setErr('Account created — please sign in again.'); return }
       }
@@ -72,20 +40,6 @@ export default function Login({ onSignedIn }) {
       setBusy(false)
     }
   }
-
-  const tab = (m, label) => (
-    <button
-      type="button"
-      onClick={() => switchMode(m)}
-      className="flex-1 py-2 rounded-lg text-sm font-bold capitalize"
-      style={{
-        background: mode === m ? C.teal : 'transparent',
-        color: mode === m ? C.ink : '#5b6a6e',
-      }}
-    >
-      {label}
-    </button>
-  )
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: '#C9CDC9' }}>
@@ -96,11 +50,6 @@ export default function Login({ onSignedIn }) {
       >
         <h1 className="text-3xl mb-1" style={{ color: C.ink, fontFamily: 'Georgia, serif' }}>Go Doc</h1>
         <p className="text-sm mb-5" style={{ color: '#5b6a6e' }}>Sign in to continue</p>
-
-        <div className="flex gap-1 p-1 mb-5 rounded-xl" style={{ background: '#e7e2d6' }}>
-          {tab('admin', 'Admin')}
-          {tab('doctor', 'Doctor')}
-        </div>
 
         {!hasSupabaseConfig && (
           <div className="mb-4 text-xs p-3 rounded" style={{ background: '#fef3c7', color: '#92400e' }}>
@@ -125,16 +74,14 @@ export default function Login({ onSignedIn }) {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          autoComplete={mode === 'doctor' ? 'current-password' : 'current-password'}
+          autoComplete="current-password"
           className="w-full px-3 py-2 rounded-lg mb-2 outline-none"
           style={{ background: 'white', border: `1px solid ${C.tealSoft}` }}
         />
 
-        {mode === 'doctor' && (
-          <p className="text-[11px] mb-3" style={{ color: '#7b8a8e' }}>
-            First time? Just enter your email and choose a password — it will be saved for next time.
-          </p>
-        )}
+        <p className="text-[11px] mb-3" style={{ color: '#7b8a8e' }}>
+          First time signing in? Enter your email and choose a password — it'll be saved for next time.
+        </p>
 
         {err && <div className="text-xs mb-3" style={{ color: '#b91c1c' }}>{err}</div>}
 
@@ -144,13 +91,11 @@ export default function Login({ onSignedIn }) {
           className="w-full py-2.5 rounded-lg font-bold text-sm"
           style={{ background: C.teal, color: C.ink, opacity: busy ? 0.6 : 1 }}
         >
-          {busy ? 'Please wait…' : mode === 'doctor' ? 'Sign in / Set password' : 'Sign in'}
+          {busy ? 'Please wait…' : 'Sign in'}
         </button>
 
         <p className="text-[11px] mt-4 text-center" style={{ color: '#7b8a8e' }}>
-          {mode === 'admin'
-            ? 'Admin creates new doctor accounts from the Doctors tab.'
-            : 'Your admin must add your email before you can sign in.'}
+          Your admin must add your email before you can sign in. You'll land on the right screen automatically.
         </p>
       </form>
     </div>
