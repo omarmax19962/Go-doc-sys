@@ -17,9 +17,13 @@ import { openWhatsApp } from "./lib/wa";
 import { referralConfirmation, weeklyDigest, redFlagAlert, dischargeSummary } from "./lib/consultantMsg";
 import { outcomesForDx, roadmapProgress } from "./lib/functionalOutcomes";
 import PublicBooking from "./components/PublicBooking";
+import AlertTakeover, { AlertsOffBanner } from "./components/AlertTakeover";
+import { useDoctorAlerts } from "./lib/alerts";
+const CoverageMap = React.lazy(() => import("./components/CoverageMap"));
 import { planForDx } from "./lib/rehab";
 import { ensureNotifyPermission, notifPermission, notifSupported, subscribeToPush } from "./lib/push";
 import Login from "./components/Login";
+import { ZONES, ZONE_AR, zoneMatch } from "./lib/zones";
 
 /* ============================================================================
    Go Doc — Operations System (single-file prototype)
@@ -671,34 +675,6 @@ const COMMON_DX = COMMON_DX_CODES
   .map(c => ICD.find(d => d.code === c))
   .filter(Boolean);
 const GENDERS = ["Male","Female"];
-const ZONES = [
-  // Cairo — central & east
-  "Downtown (Wast El Balad)","Garden City","Zamalek","Maadi","Old Maadi","New Maadi","Degla","Manial","Sayeda Zeinab","Abdeen",
-  "Nasr City","Heliopolis (Masr El Gedida)","Roxy","Korba","Sheraton","Almaza","Ain Shams","El Marg","Matareya","Hadayek El Kobba",
-  "Abbassia","Ghamra","Shubra","Rod El Farag","Helwan","El Maasara","Tora","Mokattam","Manshiyat Naser","Zawya El Hamra",
-  // New Cairo & east expansions
-  "New Cairo (Tagamoa)","1st Settlement","3rd Settlement","5th Settlement","Rehab","Madinaty","Shorouk","Obour","Badr City","Future City",
-  // Giza
-  "Dokki","Mohandessin","Agouza","Giza Square","Haram (Pyramids)","Faisal","Omraneya","Bein El Sarayat","Imbaba","Warraq",
-  "Boulak El Dakrour","Sheikh Zayed","6th October","Hadayek El Ahram","Smart Village","Dreamland","Beverly Hills",
-  // Qalyubia (north)
-  "Shubra El Kheima","Banha","Qalyub","Khanka","Obour (Qalyubia)",
-  "Other / outside Greater Cairo",
-];
-// Arabic names for every zone so the coverage-zone pickers can be searched in
-// either language. Keys must match the English ZONES values exactly.
-const ZONE_AR = {
-  "Downtown (Wast El Balad)":"وسط البلد","Garden City":"جاردن سيتي","Zamalek":"الزمالك","Maadi":"المعادي","Old Maadi":"المعادي القديمة","New Maadi":"المعادي الجديدة","Degla":"دجلة","Manial":"المنيل","Sayeda Zeinab":"السيدة زينب","Abdeen":"عابدين",
-  "Nasr City":"مدينة نصر","Heliopolis (Masr El Gedida)":"مصر الجديدة / هليوبوليس","Roxy":"روكسي","Korba":"الكوربة","Sheraton":"شيراتون","Almaza":"الماظة","Ain Shams":"عين شمس","El Marg":"المرج","Matareya":"المطرية","Hadayek El Kobba":"حدائق القبة",
-  "Abbassia":"العباسية","Ghamra":"غمرة","Shubra":"شبرا","Rod El Farag":"روض الفرج","Helwan":"حلوان","El Maasara":"المعصرة","Tora":"طرة","Mokattam":"المقطم","Manshiyat Naser":"منشية ناصر","Zawya El Hamra":"الزاوية الحمراء",
-  "New Cairo (Tagamoa)":"القاهرة الجديدة / التجمع","1st Settlement":"التجمع الأول","3rd Settlement":"التجمع الثالث","5th Settlement":"التجمع الخامس","Rehab":"الرحاب","Madinaty":"مدينتي","Shorouk":"الشروق","Obour":"العبور","Badr City":"مدينة بدر","Future City":"مدينة المستقبل",
-  "Dokki":"الدقي","Mohandessin":"المهندسين","Agouza":"العجوزة","Giza Square":"ميدان الجيزة","Haram (Pyramids)":"الهرم","Faisal":"فيصل","Omraneya":"العمرانية","Bein El Sarayat":"بين السرايات","Imbaba":"إمبابة","Warraq":"الوراق",
-  "Boulak El Dakrour":"بولاق الدكرور","Sheikh Zayed":"الشيخ زايد","6th October":"السادس من أكتوبر / 6 أكتوبر","Hadayek El Ahram":"حدائق الأهرام","Smart Village":"القرية الذكية","Dreamland":"دريم لاند","Beverly Hills":"بيفرلي هيلز",
-  "Shubra El Kheima":"شبرا الخيمة","Banha":"بنها","Qalyub":"قليوب","Khanka":"الخانكة","Obour (Qalyubia)":"العبور (القليوبية)",
-  "Other / outside Greater Cairo":"أخرى / خارج القاهرة الكبرى",
-};
-// True if zone `z` matches free-text `q` in English (label) or Arabic (ZONE_AR).
-const zoneMatch = (z, q) => { const s = (q||"").trim().toLowerCase(); if (!s) return true; return z.toLowerCase().includes(s) || (ZONE_AR[z]||"").toLowerCase().includes(s); };
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 // All 24 hours of the day, ordered so the clinic's operating window (9 AM →
 // midnight, a 15-hour stretch) comes first; the off-hours (12 AM–8 AM) follow.
@@ -2006,7 +1982,7 @@ function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib
   const navigate=(link)=>{if(!link)return;if(link.view){setTab(link.view);}else if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}};
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
   const newBookings=(bookingRequests||[]).filter(b=>b.status==="pending"||b.status==="doctor_confirmed").length;
-  const tabs=[["today","Today",LayoutGrid],["calendar","Calendar",CalendarDays],["bookings","Bookings",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["tasks","Tasks",ListChecks],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
+  const tabs=[["today","Today",LayoutGrid],["calendar","Calendar",CalendarDays],["bookings","Bookings",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["tasks","Tasks",ListChecks],["doctors","Doctors",Stethoscope],["map","Map",MapPin],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
   const openTasks=(tasks||[]).filter(t=>t.status!=="done").length;
   const docNames=doctors.map(d=>d.name);
 
@@ -2154,6 +2130,7 @@ function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib
       </div>}
 
       {/* DOCTORS — log / add / remove / availability calendar / files / profile+cases */}
+      {tab==="map"&&<React.Suspense fallback={<div className="py-16 text-center text-[13px]" style={{color:C.grey}}>Loading map…</div>}><CoverageMap doctors={doctors} visits={visits} patients={patients} bookingRequests={bookingRequests} onGoTab={setTab}/></React.Suspense>}
       {tab==="doctors"&&<DoctorsTab doctors={doctors} patients={patients} addDoctor={addDoctor} removeDoctor={removeDoctor} updateDoctorSlots={updateDoctorSlots}/>}
 
       {/* TASKS — shared idea / task board between Omar & Michael */}
@@ -4233,9 +4210,11 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
   const myZones=meDoc?.zones||[];
   const toggleZone=z=>meDoc&&updateDoctorZones(meDoc.id,myZones.includes(z)?myZones.filter(x=>x!==z):[...myZones,z],"doctor");
   const[zq,setZq]=useState("");
+  const{needs:urgentAlerts,ack:ackAlert}=useDoctorAlerts(me);
   const pOf=id=>patients.find(p=>p.id===id);
   const startSession=(p)=>{setPicker(false);setActive({visit:{id:Date.now(),patientId:p.id,doctorName:me,type:"Treatment",time:"now"},patient:p});};
   return(<div className="relative w-full max-w-[430px] min-h-screen" style={{background:C.bg}}>
+    <AlertTakeover alerts={urgentAlerts} onAck={ackAlert} onOpen={navigate} banner={!!active}/>
     {!active?<>
       <div className="px-5 pt-8 pb-5" style={{background:C.ink}}>
         <div className="flex items-center justify-between">
@@ -4249,6 +4228,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
         {tab==="visits"&&<button onClick={()=>setPicker(true)} className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-[14px]" style={{background:"#fff",color:C.ink}}><Plus size={16}/>Log a session</button>}
       </div>
 
+      <AlertsOffBanner me={me}/>
       {tab==="visits"&&(()=>{const toConfirm=(bookingRequests||[]).filter(b=>b.doctorName===me&&b.status==="pending"&&!b.doctorConfirmed);return toConfirm.length>0&&<div className="px-4 pt-4 space-y-2.5">
         {toConfirm.map(b=>(<div key={b.id} className="rounded-2xl p-3.5" style={{background:"#FBF4E6",border:`1px solid #EAD5A8`}}>
           <div className="flex items-center gap-2 mb-1"><CalendarDays size={15} color={C.amber}/><b className="text-[13px]" style={{color:C.ink,fontFamily:HEAD}}>New booking — confirm your availability</b></div>
