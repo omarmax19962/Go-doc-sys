@@ -1982,7 +1982,7 @@ function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib
   const navigate=(link)=>{if(!link)return;if(link.view){setTab(link.view);}else if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}};
   const queue=notes.filter(n=>n.state==="submitted"||n.state==="under_review");
   const newBookings=(bookingRequests||[]).filter(b=>b.status==="pending"||b.status==="doctor_confirmed").length;
-  const tabs=[["today","Today",LayoutGrid],["calendar","Calendar",CalendarDays],["bookings","Bookings",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["tasks","Tasks",ListChecks],["doctors","Doctors",Stethoscope],["map","Map",MapPin],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
+  const tabs=[["today","Today",LayoutGrid],["map","Map",MapPin],["calendar","Calendar",CalendarDays],["bookings","Bookings",CalendarDays],["patients","Patients",Users],["packages","Packages",Layers],["review","Review",ClipboardCheck],["tasks","Tasks",ListChecks],["doctors","Doctors",Stethoscope],["finances","Finances",Wallet],["library","Library",BookOpen],["settings","Settings",Settings]];
   const openTasks=(tasks||[]).filter(t=>t.status!=="done").length;
   const docNames=doctors.map(d=>d.name);
 

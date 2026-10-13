@@ -11,10 +11,10 @@ service-role key is needed. Dry-run is the default; nothing is written without -
   export SUPABASE_URL=https://xxxx.supabase.co
   export SUPABASE_ANON_KEY=...            # same public key as .env.local
   export GODOC_ADMIN_EMAIL=...  GODOC_ADMIN_PASSWORD=...
-  python3 scripts/add_patient.py scripts/patients/mirna-hossam-tawfik.json            # check only
-  python3 scripts/add_patient.py scripts/patients/mirna-hossam-tawfik.json --apply    # write
+  python3 scripts/add_patient.py scripts/patients/<patient>.json            # check only
+  python3 scripts/add_patient.py scripts/patients/<patient>.json --apply    # write
 
-Input JSON: {"patient": {...app patient fields...}, "booking": {doctor,date,time,type}|null}
+Input JSON: see scripts/patient.example.json (copy it to scripts/patients/, which is git-ignored).
 """
 import argparse, json, os, re, sys, urllib.request, urllib.error, urllib.parse
 from datetime import datetime, timezone
