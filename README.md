@@ -85,6 +85,10 @@ supabase/
         └── index.ts
 ```
 
+## Coverage map & doctor alerts
+
+See [`docs/alerts-and-coverage.md`](docs/alerts-and-coverage.md) — how to read the Egypt coverage map, and how to deploy the escalating doctor push alerts.
+
 ## Roles
 
 - **admin** — full access (all 7 tabs, doctor + finance management).

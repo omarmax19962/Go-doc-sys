@@ -17,6 +17,8 @@ import { openWhatsApp } from "./lib/wa";
 import { referralConfirmation, weeklyDigest, redFlagAlert, dischargeSummary } from "./lib/consultantMsg";
 import { outcomesForDx, roadmapProgress } from "./lib/functionalOutcomes";
 import PublicBooking from "./components/PublicBooking";
+import AlertTakeover, { AlertsOffBanner } from "./components/AlertTakeover";
+import { useDoctorAlerts } from "./lib/alerts";
 const CoverageMap = React.lazy(() => import("./components/CoverageMap"));
 import { planForDx } from "./lib/rehab";
 import { ensureNotifyPermission, notifPermission, notifSupported, subscribeToPush } from "./lib/push";
@@ -4208,9 +4210,11 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
   const myZones=meDoc?.zones||[];
   const toggleZone=z=>meDoc&&updateDoctorZones(meDoc.id,myZones.includes(z)?myZones.filter(x=>x!==z):[...myZones,z],"doctor");
   const[zq,setZq]=useState("");
+  const{needs:urgentAlerts,ack:ackAlert}=useDoctorAlerts(me);
   const pOf=id=>patients.find(p=>p.id===id);
   const startSession=(p)=>{setPicker(false);setActive({visit:{id:Date.now(),patientId:p.id,doctorName:me,type:"Treatment",time:"now"},patient:p});};
   return(<div className="relative w-full max-w-[430px] min-h-screen" style={{background:C.bg}}>
+    <AlertTakeover alerts={urgentAlerts} onAck={ackAlert} onOpen={navigate} banner={!!active}/>
     {!active?<>
       <div className="px-5 pt-8 pb-5" style={{background:C.ink}}>
         <div className="flex items-center justify-between">
@@ -4224,6 +4228,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
         {tab==="visits"&&<button onClick={()=>setPicker(true)} className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-[14px]" style={{background:"#fff",color:C.ink}}><Plus size={16}/>Log a session</button>}
       </div>
 
+      <AlertsOffBanner me={me}/>
       {tab==="visits"&&(()=>{const toConfirm=(bookingRequests||[]).filter(b=>b.doctorName===me&&b.status==="pending"&&!b.doctorConfirmed);return toConfirm.length>0&&<div className="px-4 pt-4 space-y-2.5">
         {toConfirm.map(b=>(<div key={b.id} className="rounded-2xl p-3.5" style={{background:"#FBF4E6",border:`1px solid #EAD5A8`}}>
           <div className="flex items-center gap-2 mb-1"><CalendarDays size={15} color={C.amber}/><b className="text-[13px]" style={{color:C.ink,fontFamily:HEAD}}>New booking — confirm your availability</b></div>
