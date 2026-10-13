@@ -1,0 +1,15 @@
+{
+  "patient": {
+    "name": "Example Patient",
+    "age": 40,
+    "gender": null,
+    "phone": "01000000000",
+    "complaint": "Lower back pain",
+    "history": "",
+    "zone": "Maadi",
+    "locText": "",
+    "locUrl": "",
+    "source": ""
+  },
+  "booking": { "doctor": "Layla", "date": "2026-12-01", "time": "17:00", "type": "Assessment" }
+}
