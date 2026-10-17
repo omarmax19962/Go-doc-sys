@@ -90,6 +90,25 @@ test("demand: leads/patients/requests, dead patients ignored, free-text area map
   assert.equal(c.totals.unmappedDemand, 2); // "Other" + blank zone
 });
 
+test("per-zone availability splits hours by zone; totals stay deduped; missing zone falls back", () => {
+  const split = [{
+    name: "Dr. Z", zones: ["Maadi", "Dokki"],
+    slots: ["Wed-09:00", "Wed-11:00", "Fri-09:00"],
+    zoneSlots: { Maadi: ["Wed-09:00"], Dokki: ["Wed-11:00", "Fri-09:00"] },
+  }];
+  const c = computeCoverage({ doctors: split, visits: [], patients: [], bookingRequests: [], now: NOW });
+  assert.equal(c.zones["Maadi"].weekly, 1); // only Wed-09:00 is worked in Maadi
+  assert.equal(c.zones["Dokki"].weekly, 2); // Wed-11:00 + Fri-09:00 in Dokki
+  assert.equal(c.totals.weekly, 3);         // 3 distinct hours, counted once (no overlap)
+
+  // A covered zone with no per-zone entry falls back to the general template.
+  const mixed = [{ name: "Dr. Y", zones: ["Maadi", "Dokki"], slots: ["Wed-09:00", "Wed-11:00"], zoneSlots: { Maadi: ["Wed-09:00"] } }];
+  const c2 = computeCoverage({ doctors: mixed, visits: [], patients: [], bookingRequests: [], now: NOW });
+  assert.equal(c2.zones["Maadi"].weekly, 1); // per-zone override
+  assert.equal(c2.zones["Dokki"].weekly, 2); // general template (both hours)
+  assert.equal(c2.totals.weekly, 2);         // Wed-09:00 + Wed-11:00
+});
+
 test("zone status ladder", () => {
   assert.equal(zoneStatus({ doctors: 0, weekly: 0, open: 0, demand: 0 }).status, "idle");
   assert.equal(zoneStatus({ doctors: 0, weekly: 0, open: 0, demand: 2 }).status, "gap");

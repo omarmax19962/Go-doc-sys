@@ -753,6 +753,16 @@ export function useDataStore({ role, me }) {
     else notify('doctor', `Admin updated your coverage zones (${zones.length})`, d?.name, { view: 'avail' })
   }, [doctors, notify])
 
+  // Per-zone availability override: zoneSlots = { "<zone>": ["Sun-09:00", ...] }.
+  const updateDoctorZoneSlots = useCallback(async (id, zoneSlots, actor = 'admin') => {
+    const d = doctors.find((x) => x.id === id)
+    setDoctors((ds) => ds.map((x) => x.id === id ? { ...x, zoneSlots } : x))
+    await supabase.from('doctors').update({ zone_slots: zoneSlots }).eq('id', id)
+    const nZones = Object.keys(zoneSlots || {}).filter((z) => (zoneSlots[z] || []).length).length
+    if (actor === 'doctor') notify('admin', `${d?.name || 'A doctor'} updated per-zone availability (${nZones} zone${nZones === 1 ? '' : 's'})`, null, { view: 'doctors', doctorId: id })
+    else notify('doctor', `Admin updated your per-zone availability (${nZones} zone${nZones === 1 ? '' : 's'})`, d?.name, { view: 'avail' })
+  }, [doctors, notify])
+
   // patch is camelCase from the UI; map the multi-word keys to snake_case columns.
   const _FIN_COL = { paidOut: 'paid_out', paidOutDate: 'paid_out_date', visitId: 'visit_id' }
   const updateFinance = useCallback(async (id, patch) => {
@@ -1135,7 +1145,7 @@ export function useDataStore({ role, me }) {
     // mutations
     addPatient, assignDoctor, updatePatient, updatePatientStatus, dischargePatient, updatePatientFiles, removePatient, removePatients,
     submitNote, reviewNote, openNoteForReview, savePatientSummary, aiSimplifyNote,
-    addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
+    addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones, updateDoctorZoneSlots,
     addConsultant, removeConsultant, setReferrer, savePatientProtocol,
     assignBookingDoctor, doctorConfirmBooking, declineBooking, confirmBooking,
     updateFinance, settleFinances, removeFinance, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,

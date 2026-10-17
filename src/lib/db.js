@@ -11,6 +11,9 @@ export const fromDoctor = (r) => ({
   spec: r.spec,
   zones: r.zones || [],
   slots: r.slots || [],
+  // Optional per-zone availability: { "<zone>": ["Sun-09:00", ...], ... }.
+  // When a zone has an entry, those times override the general `slots` for it.
+  zoneSlots: r.zone_slots || {},
   files: r.files || [],
   email: r.email || '',
   userId: r.user_id || null,
@@ -20,6 +23,7 @@ export const toDoctor = (d) => ({
   spec: d.spec,
   zones: d.zones || [],
   slots: d.slots || [],
+  zone_slots: d.zoneSlots || {},
   files: d.files || [],
   email: d.email ? d.email.trim() : null,
 })

@@ -23,7 +23,7 @@ const CoverageMap = React.lazy(() => import("./components/CoverageMap"));
 import { planForDx } from "./lib/rehab";
 import { ensureNotifyPermission, notifPermission, notifSupported, subscribeToPush } from "./lib/push";
 import Login from "./components/Login";
-import { ZONES, ZONE_AR, zoneMatch } from "./lib/zones";
+import { ZONES, ZONE_AR, zoneMatch, zoneFromText } from "./lib/zones";
 
 /* ============================================================================
    Go Doc — Operations System (single-file prototype)
@@ -1462,7 +1462,7 @@ function AppWithData({ role, me, onSignOut }){
     submitNote, reviewNote, openNoteForReview, savePatientSummary, aiSimplifyNote,
     addConsultant, removeConsultant, setReferrer, savePatientProtocol,
     assignBookingDoctor, doctorConfirmBooking, declineBooking, confirmBooking,
-    addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones,
+    addDoctor, removeDoctor, updateDoctorSlots, updateDoctorZones, updateDoctorZoneSlots,
     updateFinance, settleFinances, removeFinance, addCredit, removeCredit, addExpense, updateExpense, removeExpense, addGrowthMonth, updateGrowthMonth, removeGrowthMonth, updateVisitStatus, updateConfig,
     addPackage, assignSessionDate, addPackageSlot, removePackageSlot, reassignPackageDoctor, updatePackage, endPackage,
     sendReminder, resolveReschedule, bookSession, rescheduleVisit, deleteVisit, approveVisit,
@@ -1477,10 +1477,10 @@ function AppWithData({ role, me, onSignOut }){
         <button onClick={onSignOut} className="px-3 py-1 rounded-full text-[11px] font-bold" style={{background:"transparent",color:"#fff",border:"1px solid #445"}}>Sign out</button>
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,consultants,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,bookingRequests,assignBookingDoctor,doctorConfirmBooking,declineBooking,confirmBooking,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
+        ? <Admin {...{patients,visits,notes,pending,doctors,consultants,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,bookingRequests,assignBookingDoctor,doctorConfirmBooking,declineBooking,confirmBooking,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
         : role==="consultant"
         ? <Consultant {...{patients,visits,notes,me,consultants,config,savePatientProtocol,updatePatientFiles,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests,doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests,doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
 }
@@ -1607,6 +1607,11 @@ function _LegacyMockApp(){
     setDoctors(ds=>ds.map(x=>x.id===id?{...x,zones}:x));
     if(actor==="doctor")notify("admin",`${d?.name||"A doctor"} updated their coverage zones (${zones.length})`);
     else notify("doctor",`Admin updated your coverage zones (${zones.length})`,d?.name);};
+  const updateDoctorZoneSlots=(id,zoneSlots,actor="admin")=>{const d=doctors.find(x=>x.id===id);
+    setDoctors(ds=>ds.map(x=>x.id===id?{...x,zoneSlots}:x));
+    const nZones=Object.keys(zoneSlots||{}).filter(z=>(zoneSlots[z]||[]).length).length;
+    if(actor==="doctor")notify("admin",`${d?.name||"A doctor"} updated per-zone availability (${nZones} zones)`);
+    else notify("doctor",`Admin updated your per-zone availability (${nZones} zones)`,d?.name);};
   const updatePatientFiles=(pid,files)=>setPatients(ps=>ps.map(p=>p.id===pid?{...p,files}:p));
   const updateFinance=(id,patch)=>setFinances(fs=>fs.map(f=>f.id===id?{...f,...patch}:f));
   const updateVisitStatus=(vid,status)=>{setVisits(vs=>vs.map(v=>v.id===vid?{...v,status}:v));
@@ -1623,8 +1628,8 @@ function _LegacyMockApp(){
           style={{background:role===r?C.teal:"transparent",color:role===r?C.ink:"#fff",border:`1px solid ${role===r?C.teal:"#445"}`}}>{r}</button>))}
       </div>
       {role==="admin"
-        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}}/>}
+        ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,notifs,markRead}}/>
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updatePatientFiles,notifs,markRead}}/>}
     </div>
   );
 }
@@ -1921,7 +1926,18 @@ function BookingsInbox({bookingRequests=[],doctors=[],config,assignBookingDoctor
   const[filter,setFilter]=useState("active");
   const clinic=config?.clinicName||"Go Doc";
   const fmtBookDate=(d)=>{try{return new Date(d+"T00:00:00").toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});}catch{return d;}};
-  const slotDocs=(date,time)=>{try{const wd=DAYS[new Date(date+"T00:00:00").getDay()];return doctors.filter(d=>(d.slots||[]).includes(`${wd}-${time}`));}catch{return[];}};
+  // Doctors free at this weekday+time AND (when the booking names an area) in THAT
+  // zone — using each doctor's per-zone availability if they set it, else their general template.
+  const slotDocs=(date,time,area)=>{try{
+    const wd=DAYS[new Date(date+"T00:00:00").getDay()];const key=`${wd}-${time}`;
+    const zone=area?zoneFromText(area):null;
+    return doctors.filter(d=>{
+      if(zone&&!(d.zones||[]).includes(zone))return false;
+      const zs=d.zoneSlots||{};
+      const eff=(zone&&Array.isArray(zs[zone])&&zs[zone].length)?zs[zone]:(d.slots||[]);
+      return eff.includes(key);
+    });
+  }catch{return[];}};
   const hoursLeft=(b)=>{if(!b.expiresAt)return null;const ms=new Date(b.expiresAt)-new Date();return ms>0?Math.floor(ms/3600000):0;};
   const order={pending:0,doctor_confirmed:1,confirmed:2,declined:3,expired:4};
   const list=(bookingRequests||[]).filter(b=>filter==="all"?true:filter==="active"?["pending","doctor_confirmed"].includes(b.status):filter==="confirmed"?b.status==="confirmed":["declined","expired"].includes(b.status))
@@ -1933,7 +1949,7 @@ function BookingsInbox({bookingRequests=[],doctors=[],config,assignBookingDoctor
       <div className="flex gap-1.5">{[["active","Needs action"],["confirmed","Confirmed"],["closed","Closed"],["all","All"]].map(([k,l])=>(<button key={k} onClick={()=>setFilter(k)} className="px-3 py-1.5 rounded-full text-[12px] font-semibold" style={{background:filter===k?C.ink:"#fff",color:filter===k?"#fff":C.ink2,border:`1px solid ${filter===k?C.ink:C.line}`}}>{l}</button>))}</div>
     </div>
     {list.length===0&&<div className="bg-white rounded-2xl p-8 text-center text-[13px]" style={{border:`1px solid ${C.line}`,color:C.grey}}>No bookings here yet. Share your booking link: <b>go-doc-sys.vercel.app/book</b></div>}
-    {list.map(b=>{const docs=slotDocs(b.date,b.time);const hl=hoursLeft(b);const badge=STBADGE[b.status]||["",C.grey];return(
+    {list.map(b=>{const docs=slotDocs(b.date,b.time,b.area);const hl=hoursLeft(b);const badge=STBADGE[b.status]||["",C.grey];return(
       <div key={b.id} className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="min-w-0">
@@ -1974,7 +1990,7 @@ function BookingsInbox({bookingRequests=[],doctors=[],config,assignBookingDoctor
   </div>);
 }
 
-function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,bookingRequests=[],assignBookingDoctor,doctorConfirmBooking,declineBooking,confirmBooking,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
+function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,bookingRequests=[],assignBookingDoctor,doctorConfirmBooking,declineBooking,confirmBooking,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateDoctorZoneSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
   const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   // Notification deep-link: a tapped notification jumps to the relevant place.
@@ -2131,7 +2147,7 @@ function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib
 
       {/* DOCTORS — log / add / remove / availability calendar / files / profile+cases */}
       {tab==="map"&&<React.Suspense fallback={<div className="py-16 text-center text-[13px]" style={{color:C.grey}}>Loading map…</div>}><CoverageMap doctors={doctors} visits={visits} patients={patients} bookingRequests={bookingRequests} onGoTab={setTab}/></React.Suspense>}
-      {tab==="doctors"&&<DoctorsTab doctors={doctors} patients={patients} addDoctor={addDoctor} removeDoctor={removeDoctor} updateDoctorSlots={updateDoctorSlots}/>}
+      {tab==="doctors"&&<DoctorsTab doctors={doctors} patients={patients} addDoctor={addDoctor} removeDoctor={removeDoctor} updateDoctorSlots={updateDoctorSlots} updateDoctorZoneSlots={updateDoctorZoneSlots}/>}
 
       {/* TASKS — shared idea / task board between Omar & Michael */}
       {tab==="tasks"&&<TasksTab tasks={tasks} addTask={addTask} updateTask={updateTask} removeTask={removeTask}/>}
@@ -2670,8 +2686,42 @@ function SlotGrid({slots,onToggle}){
   </div>);
 }
 
+/* ---------- per-zone availability editor (shared: doctor + admin) ----------
+ * A "General · all zones" template plus one tab per covered zone. A zone with no
+ * entry just uses the general times; tapping slots creates a per-zone override. */
+function ZoneAvailEditor({doctor,updateSlots,updateZoneSlots,actor="admin"}){
+  const slots=doctor.slots||[]; const zones=doctor.zones||[]; const zoneSlots=doctor.zoneSlots||{};
+  const days=[...new Set(slots.map(s=>s.split("-")[0]))];
+  const [sel,setSel]=useState("general");
+  const t=(sel==="general"||zones.includes(sel))?sel:"general";
+  const cur=t==="general"?slots:(zoneSlots[t]||[]);
+  const toggle=k=>{
+    if(t==="general"){updateSlots(doctor.id,slots.includes(k)?slots.filter(x=>x!==k):[...slots,k],actor);return;}
+    const z=zoneSlots[t]||[];const next=z.includes(k)?z.filter(x=>x!==k):[...z,k];
+    updateZoneSlots(doctor.id,{...zoneSlots,[t]:next},actor);};
+  const clear=()=>{if(t==="general"){updateSlots(doctor.id,[],actor);return;}const nz={...zoneSlots};delete nz[t];updateZoneSlots(doctor.id,nz,actor);};
+  const copyGen=()=>{if(t!=="general")updateZoneSlots(doctor.id,{...zoneSlots,[t]:[...slots]},actor);};
+  return(<div>
+    <div className="flex flex-wrap gap-1.5 mb-3">
+      <button onClick={()=>setSel("general")} className="text-[12px] px-2.5 py-1 rounded-lg font-semibold" style={{background:t==="general"?C.ink:"#F4F4F2",color:t==="general"?"#fff":C.ink2,border:`1px solid ${t==="general"?C.ink:C.line}`}}>General · all zones <span style={{opacity:.65}}>({slots.length})</span></button>
+      {zones.map(z=>{const ov=(zoneSlots[z]||[]).length;const on=t===z;return(
+        <button key={z} onClick={()=>setSel(z)} className="text-[12px] px-2.5 py-1 rounded-lg font-semibold" style={{background:on?C.teal:"#F4FBFC",color:C.ink,border:`1px solid ${on?C.teal:C.tealSoft}`}}>{z} <span style={{opacity:.65}}>({ov?ov:"gen"})</span></button>);})}
+      {zones.length===0&&<span className="text-[11px]" style={{color:C.grey}}>Add coverage zones to set per-zone times.</span>}
+    </div>
+    {t!=="general"&&(zoneSlots[t]||[]).length===0&&
+      <div className="text-[11px] px-3 py-2 rounded-lg mb-2.5" style={{background:"#F4FBFC",color:C.ink2,border:`1px solid ${C.tealSoft}`}}>
+        <b>{t}</b>{ZONE_AR[t]?` · ${ZONE_AR[t]}`:""} uses the general times. Tap slots to set specific times here, or <button onClick={copyGen} className="font-bold underline" style={{color:C.ink}}>copy general</button> and tweak.
+      </div>}
+    <SlotGrid slots={cur} onToggle={toggle}/>
+    <div className="flex items-center justify-between mt-3 pt-3 text-[12px]" style={{borderTop:`1px solid ${C.line}`,color:C.grey}}>
+      <span>{t==="general"?`${days.length} day(s) · ${slots.length} slots / week`:((zoneSlots[t]||[]).length?`${(zoneSlots[t]||[]).length} slot(s) in ${t}`:"using general times")}</span>
+      {(t==="general"?slots.length>0:(zoneSlots[t]||[]).length>0)&&<button onClick={clear} className="font-semibold" style={{color:C.red}}>{t==="general"?"Clear all":"Use general instead"}</button>}
+    </div>
+  </div>);
+}
+
 /* ---------- Doctors management (with availability calendar) ---------- */
-function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots}){
+function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots,updateDoctorZoneSlots}){
   const[adding,setAdding]=useState(false);const[editing,setEditing]=useState(null);
   const[inviteMsg,setInviteMsg]=useState("");
   const[nd,setNd]=useState({name:"",spec:"",zones:[],slots:[],email:""});
@@ -2721,7 +2771,7 @@ function DoctorsTab({doctors,patients,addDoctor,removeDoctor,updateDoctorSlots})
         </div>
         <button onClick={()=>setEditing(editing===d.id?null:d.id)} className="mt-3 text-[12px] font-semibold flex items-center gap-1.5" style={{color:"#2E6E73"}}><Calendar size={13}/>{editing===d.id?"Done editing availability":"Edit availability"}</button>
         {editing===d.id&&<div className="mt-3 pt-3" style={{borderTop:`1px solid ${C.line}`}}>
-          <SlotGrid slots={d.slots||[]} onToggle={k=>updateDoctorSlots(d.id,(d.slots||[]).includes(k)?d.slots.filter(x=>x!==k):[...(d.slots||[]),k])}/></div>}
+          <ZoneAvailEditor doctor={d} updateSlots={updateDoctorSlots} updateZoneSlots={updateDoctorZoneSlots} actor="admin"/></div>}
       </div>))}
     </div>
   </>);
@@ -4195,7 +4245,7 @@ function Consultant({patients=[],visits=[],notes=[],me,consultants=[],config,sav
   </div>);
 }
 
-function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests=[],doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updatePatientFiles,notifs,markRead}){
+function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests=[],doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updatePatientFiles,notifs,markRead}){
   const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);const[booking,setBooking]=useState(null);
   // Notification deep-link: jump to a tab (view) or open the patient's file.
   const navigate=(link)=>{if(!link)return;if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}else if(link.view){const t=link.view==="review"||link.view==="finances"?"patients":link.view==="calendar"?"calendar":link.view;setTab(t);}};
@@ -4277,12 +4327,8 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
         {meDoc&&<>
           <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
             <div className="flex items-center gap-2 mb-1"><Calendar size={15} color={C.teal}/><h3 className="text-[14px] font-bold" style={{fontFamily:HEAD}}>Weekly availability</h3></div>
-            <p className="text-[12px] mb-3" style={{color:C.grey}}>Tap the times you’re available to visit patients. Changes save instantly and the admin sees them live.</p>
-            <SlotGrid slots={mySlots} onToggle={toggleSlot}/>
-            <div className="flex items-center justify-between mt-3 pt-3 text-[12px]" style={{borderTop:`1px solid ${C.line}`,color:C.grey}}>
-              <span>{myDays.length} day(s) · {mySlots.length} slots / week</span>
-              {mySlots.length>0&&<button onClick={()=>updateDoctorSlots(meDoc.id,[],"doctor")} className="font-semibold" style={{color:C.red}}>Clear all</button>}
-            </div>
+            <p className="text-[12px] mb-3" style={{color:C.grey}}>Set your general times, or tap a zone to set different times for that specific area. Saves instantly — the admin sees it live.</p>
+            <ZoneAvailEditor doctor={meDoc} updateSlots={updateDoctorSlots} updateZoneSlots={updateDoctorZoneSlots} actor="doctor"/>
           </div>
           <div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.line}`}}>
             <div className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{color:C.grey}}>Coverage zones</div>

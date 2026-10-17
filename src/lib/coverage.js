@@ -3,9 +3,10 @@
  * unit-tested in coverage.test.js.
  *
  * Model: a doctor has a weekly template of hourly slots ("Sun-09:00") and a set of
- * zones they cover. The template is NOT per-zone — a doctor can only be in one place
- * per slot — so per-zone numbers overlap for multi-zone doctors, while `totals`
- * counts every doctor-slot exactly once. */
+ * zones they cover. Availability can be set per zone (doctor.zoneSlots) — those hours
+ * win for that zone; otherwise the general template applies. Each zone therefore counts
+ * only the hours the doctor actually works there, while `totals` dedupes a doctor's
+ * distinct hours so Egypt-wide numbers count every doctor-slot exactly once. */
 import { ZONES, ZONE_GEO, GOVERNORATES, zoneFromText } from "./zones.js";
 import { DAY_NAMES, cairoParts, cairoToEpoch, addDays, dowOf, parseTimeOfDay } from "../../supabase/functions/_shared/cairoTime.js";
 
@@ -34,10 +35,26 @@ export function parseSlot(key) {
 
 const emptyByDay = () => Object.fromEntries(DAY_NAMES.map((d) => [d, 0]));
 
-/** Supply of one doctor: weekly template size, and open/booked slots over the horizon. */
-function doctorSupply(doctor, visits, now, filter, horizonDays) {
+/** Times a doctor works in a given zone. Per-zone availability (zoneSlots) wins
+ * when set for that zone; otherwise the general weekly template applies. */
+export function effectiveZoneSlots(doctor, zone) {
+  const zs = doctor.zoneSlots && doctor.zoneSlots[zone];
+  return (Array.isArray(zs) && zs.length) ? zs : (doctor.slots || []);
+}
+/** A doctor's distinct working hours across all the zones they cover (deduped),
+ * so Egypt-wide totals never double-count a doctor who splits time by zone. */
+export function allDoctorSlots(doctor) {
+  const zones = doctor.zones || [];
+  if (!zones.length) return doctor.slots || [];
+  const set = new Set();
+  for (const z of zones) for (const k of effectiveZoneSlots(doctor, z)) set.add(k);
+  return [...set];
+}
+
+/** Supply of a slot list for one doctor: weekly size, and open/booked over the horizon. */
+function supplyOf(slotKeys, doctorName, visits, now, filter, horizonDays) {
   const band = BANDS[filter.band] || BANDS.all;
-  const slots = (doctor.slots || []).map(parseSlot).filter(Boolean)
+  const slots = (slotKeys || []).map(parseSlot).filter(Boolean)
     .filter((s) => (!filter.day || s.day === filter.day) && s.hour >= band.from && s.hour < band.to);
   const out = { weekly: slots.length, open: 0, booked: 0, byDay: emptyByDay(), openByDay: emptyByDay() };
   for (const s of slots) out.byDay[s.day]++;
@@ -45,7 +62,7 @@ function doctorSupply(doctor, visits, now, filter, horizonDays) {
   // Hours already held by this doctor's live visits: "YYYY-MM-DD|hour"
   const held = new Set();
   for (const v of visits) {
-    if (v.doctorName !== doctor.name || SLOT_FREEING.has(v.status) || !v.date) continue;
+    if (v.doctorName !== doctorName || SLOT_FREEING.has(v.status) || !v.date) continue;
     const mins = parseTimeOfDay(v.time);
     if (mins != null) held.add(`${v.date}|${Math.floor(mins / 60)}`);
   }
@@ -86,7 +103,9 @@ export function zoneStatus({ doctors, weekly, open, demand }) {
 export function computeCoverage({ doctors = [], visits = [], patients = [], bookingRequests = [], now = Date.now(), filter = {} }) {
   const f = { day: filter.day || null, band: filter.band || "all", doctor: filter.doctor || null };
   const pool = f.doctor ? doctors.filter((d) => d.name === f.doctor) : doctors;
-  const supply = new Map(pool.map((d) => [d.name, doctorSupply(d, visits, now, f, HORIZON_DAYS)]));
+  // Per-doctor supply over ALL their distinct hours (deduped) — used for Egypt-wide
+  // totals and governorate roll-ups so a doctor is never counted twice.
+  const supply = new Map(pool.map((d) => [d.name, supplyOf(allDoctorSlots(d), d.name, visits, now, f, HORIZON_DAYS)]));
 
   const zones = {};
   for (const z of ZONES) {
@@ -99,10 +118,12 @@ export function computeCoverage({ doctors = [], visits = [], patients = [], book
   }
 
   for (const d of pool) {
-    const s = supply.get(d.name);
     for (const zn of d.zones || []) {
       const row = zones[zn];
       if (!row) continue; // zone removed from the registry — ignore stale reference
+      // Only the hours the doctor actually works IN THIS zone (per-zone if set,
+      // else the general template) — so multi-zone doctors no longer overlap.
+      const s = supplyOf(effectiveZoneSlots(d, zn), d.name, visits, now, f, HORIZON_DAYS);
       row.doctors.push(d.name);
       row.weekly += s.weekly; row.open += s.open; row.booked += s.booked;
       for (const k of DAY_NAMES) { row.byDay[k] += s.byDay[k]; row.openByDay[k] += s.openByDay[k]; }
