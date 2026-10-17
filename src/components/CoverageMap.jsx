@@ -25,8 +25,10 @@ const STATUS = {
   ok:   { color: C.green,   label: "Healthy",      rank: 3, hint: "Open slots cover the queue" },
   idle: { color: "#B8C2CB", label: "No activity",  rank: 4, hint: "No doctor and no demand" },
 };
-const TILE = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-const ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+// Key-free OpenStreetMap tiles. CARTO's basemaps now require an API key and
+// render an "API KEY REQUIRED" watermark, so we use OSM standard tiles instead.
+const TILE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 const EGYPT_BOUNDS = [[21.8, 24.6], [32.0, 37.0]];
 const ZOOM_ZONES = 9; // at or above this zoom we draw zones, below it governorates
 // Governorates that render as one bubble at country scale (their centroids overlap there).

@@ -26,3 +26,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local credential exports — never commit
+doctor-credentials.txt
+godoc-platform-access.pdf
