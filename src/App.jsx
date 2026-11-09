@@ -23,6 +23,7 @@ const CoverageMap = React.lazy(() => import("./components/CoverageMap"));
 import { planForDx } from "./lib/rehab";
 import { ensureNotifyPermission, notifPermission, notifSupported, subscribeToPush } from "./lib/push";
 import Login from "./components/Login";
+import PatientProgress, { patientToken } from "./components/PatientProgress";
 import { ZONES, ZONE_AR, zoneMatch, zoneFromText } from "./lib/zones";
 
 /* ============================================================================
@@ -1424,6 +1425,7 @@ function isBookingRoute(){
 }
 export default function App(){
   if (isBookingRoute()) return <PublicBooking/>;
+  if (patientToken()) return <PatientProgress/>;
   return <AuthedApp/>;
 }
 
