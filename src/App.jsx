@@ -1480,7 +1480,7 @@ function AppWithData({ role, me, onSignOut }){
         ? <Admin {...{patients,visits,notes,pending,doctors,consultants,exerciseLib,modalityLib,finances,credits,addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,bookingRequests,assignBookingDoctor,doctorConfirmBooking,declineBooking,confirmBooking,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}}/>
         : role==="consultant"
         ? <Consultant {...{patients,visits,notes,me,consultants,config,savePatientProtocol,updatePatientFiles,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests,doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updatePatientFiles,notifs,markRead}}/>}
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests,doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updatePatientFiles,addPatient,notifs,markRead}}/>}
     </div>
   );
 }
@@ -1629,7 +1629,7 @@ function _LegacyMockApp(){
       </div>
       {role==="admin"
         ? <Admin {...{patients,visits,notes,pending,doctors,exerciseLib,modalityLib,finances,config,setExerciseLib,setModalityLib,addPatient,assignDoctor,reviewNote,openNoteForReview,addDoctor,removeDoctor,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updateFinance,dischargePatient,updatePatientStatus,updatePatientFiles,updateVisitStatus,updateConfig,notifs,markRead}}/>
-        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updatePatientFiles,notifs,markRead}}/>}
+        : <Doctor {...{patients,visits,notes,me,doctors,exerciseLib,modalityLib,submitNote,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updatePatientFiles,addPatient,notifs,markRead}}/>}
     </div>
   );
 }
@@ -4245,8 +4245,8 @@ function Consultant({patients=[],visits=[],notes=[],me,consultants=[],config,sav
   </div>);
 }
 
-function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests=[],doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updatePatientFiles,notifs,markRead}){
-  const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);const[booking,setBooking]=useState(null);
+function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packages,bookingRequests=[],doctorConfirmBooking,submitNote,savePatientSummary,aiSimplifyNote,assignSessionDate,bookSession,rescheduleVisit,deleteVisit,updateDoctorSlots,updateDoctorZones,updateDoctorZoneSlots,updatePatientFiles,addPatient,notifs,markRead}){
+  const[active,setActive]=useState(null);const[picker,setPicker]=useState(false);const[tab,setTab]=useState("visits");const[viewP,setViewP]=useState(null);const[booking,setBooking]=useState(null);const[intake,setIntake]=useState(false);
   // Notification deep-link: jump to a tab (view) or open the patient's file.
   const navigate=(link)=>{if(!link)return;if(link.patientId&&patients.some(p=>p.id===link.patientId)){setViewP({id:link.patientId});}else if(link.view){const t=link.view==="review"||link.view==="finances"?"patients":link.view==="calendar"?"calendar":link.view;setTab(t);}};
   // All of the doctor's open sessions — package billing is admin-only, so package
@@ -4309,7 +4309,9 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
 
       {booking&&<BookingModal slot={booking} doctors={doctors} patients={patients} visits={visits} fixedDoctor={me} onClose={()=>setBooking(null)} onBook={async payload=>{await bookSession({...payload,doctorName:me,booker:"doctor"});}}/>}
 
-      {tab==="patients"&&<div className="p-4">{myPatients.length===0&&<p className="text-[13px] text-center mt-6" style={{color:C.grey}}>No patients assigned to you yet.</p>}
+      {tab==="patients"&&<div className="p-4">
+        <button onClick={()=>setIntake(true)} className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 rounded-xl font-semibold text-[14px] text-white" style={{background:C.ink}}><Plus size={16}/>New patient</button>
+        {myPatients.length===0&&<p className="text-[13px] text-center mt-6" style={{color:C.grey}}>No patients yet — tap “New patient” to add one.</p>}
         {myPatients.map(p=>{const h=notes.filter(n=>n.patientId===p.id);const last=h.slice().sort((a,b)=>(a.date||"").localeCompare(b.date||"")).slice(-1)[0];return(
           <button key={p.id} onClick={()=>setViewP(p)} className="w-full bg-white rounded-2xl p-4 mb-3 text-left" style={{border:`1px solid ${C.line}`}}>
             <div className="flex items-center justify-between">
@@ -4357,6 +4359,7 @@ function Doctor({patients,visits,notes,me,doctors,exerciseLib,modalityLib,packag
             {myPatients.length===0&&<p className="text-[13px]" style={{color:C.grey}}>No patients assigned to you yet.</p>}
           </div>
         </div></div>}
+      {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc,t)=>{addPatient&&addPatient(p,b,d,doc,t);setIntake(false);}}/>}
       {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={[]} visits={visits} role="doctor" onClose={()=>setViewP(null)} onDischarge={()=>{}} updatePatientFiles={updatePatientFiles} savePatientSummary={savePatientSummary} aiSimplifyNote={aiSimplifyNote}/>}
     </>:<Logger ctx={active} notes={notes} exerciseLib={exerciseLib} modalityLib={modalityLib} onBack={()=>setActive(null)} onSubmit={n=>{submitNote(n);setActive(null);}}/>}
   </div>);
