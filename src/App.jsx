@@ -4389,8 +4389,13 @@ function PainScaleCard({label,val,set}){
     <div className="grid grid-cols-11 gap-1">{Array.from({length:11}).map((_,n)=><button key={n} onClick={()=>set(n)} className="h-9 rounded-md text-[12px] font-semibold" style={{background:val===n?painColor(n):"#fff",color:val===n?"#fff":C.ink2,border:`1px solid ${val===n?painColor(n):C.line}`}}>{n}</button>)}</div>
   </div>);
 }
+const NEURO_DX=/cidp|stroke|cva|hemipleg|parkinson|neuro|gbs|guillain|multiple sclerosis|\bms\b|demyelinat|spinal cord|parapleg|quadripleg|tetrapleg|palsy|myopathy|neuropath|ataxia/i;
 function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
   const{visit,patient}=ctx;const isAssess=visit.type==="Assessment";
+  // Function (neuro) track → capture a "general progress / independence %" per session.
+  const isFunction=patient.progressTrack==='function'||(!patient.progressTrack&&NEURO_DX.test((patient.dx&&patient.dx.label)||""));
+  const lastProg=useMemo(()=>{const n=notes.filter(x=>x.patientId===patient.id&&x.progressPct!=null).slice(-1)[0];return n?n.progressPct:null;},[notes,patient.id]);
+  const[progressPct,setProgressPct]=useState(lastProg);
   /* seamless data flow: prefill follow-up from latest assessment note for this patient */
   const lastAssess=useMemo(()=>notes.filter(n=>n.patientId===patient.id&&n.type==="Assessment").slice(-1)[0],[notes,patient.id]);
   const[pb,setPb]=useState(null),[pa,setPa]=useState(null),[resp,setResp]=useState(null);
@@ -4497,6 +4502,18 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
           <input type="time" value={nextTime} step="900" onChange={e=>setNextTime(e.target.value)} className="w-[120px] px-3 py-2.5 rounded-xl text-[15px] outline-none bg-white" style={{border:`1px solid ${C.line}`,color:nextTime?C.ink:C.grey}}/>
         </div>
         <p className="text-[11px] mt-1.5 flex items-center gap-1.5" style={{color:C.grey}}><Calendar size={12}/>{nextDate?`Schedules ${nextDate}${nextTime?` at ${to12(nextTime)}`:" (no time set)"} — you'll get a reminder to log it when it's due.`:"Set a date and time for the upcoming session."}</p></div>
+      {/* Function (neuro) track — general progress / independence, shown on the patient's page */}
+      {isFunction&&<div className="bg-white rounded-2xl p-4" style={{border:`1px solid ${C.tealSoft}`}}>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[13px] font-bold" style={{color:C.ink}}>General progress — independence</span>
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{background:"#EAF6F4",color:"#2E6E73"}}>👁 patient sees this</span></div>
+        <p className="text-[11px] mb-2" style={{color:C.grey}}>How independent is the patient in the movements you're working on? Feeds the neuro progress chart.</p>
+        <div className="flex items-center gap-3">
+          <input type="range" min="0" max="100" step="5" value={progressPct==null?(lastProg??50):progressPct} onChange={e=>setProgressPct(Number(e.target.value))} className="flex-1" style={{accentColor:"#2E9E6F"}}/>
+          <span className="text-[18px] font-bold" style={{width:56,textAlign:"right",color:progressPct==null?C.grey:"#2E9E6F"}}>{progressPct==null?"—":progressPct+"%"}</span></div>
+        {progressPct==null&&<button onClick={()=>setProgressPct(lastProg??50)} className="text-[11px] font-semibold mt-1.5" style={{color:"#2E6E73"}}>Tap to set{lastProg!=null?` · last ${lastProg}%`:""}</button>}
+        {progressPct!=null&&lastProg!=null&&progressPct===lastProg&&<div className="text-[10px] mt-1.5" style={{color:C.grey}}>same as last time</div>}
+      </div>}
       {/* Free-form notes — anything that doesn't fit the SOAP boxes */}
       <SoapSection letter="✎" label="Notes" hint="Anything else worth recording"/>
       <NoteArea label="Additional notes" hint="free-form" value={additionalNotes} set={setAdditionalNotes} rows={3} placeholder="Any other observations, conversations, reminders or context for this session…"/>
@@ -4509,7 +4526,7 @@ function Logger({ctx,notes,exerciseLib,modalityLib,onBack,onSubmit}){
       <button disabled={!can} onClick={()=>onSubmit({visitId:visit.id,patientId:patient.id,patientName:patient.name,doctorName:visit.doctorName,type:visit.type,
         painBefore:pb??0,painAfter:pa??0,response:resp||"same",exercises:Object.keys(ex).filter(k=>ex[k]),modalities:Object.keys(mod).filter(k=>mod[k]),plan,nextSessionDate:nextDate,nextSessionTime:nextTime,redFlag:rf,redFlagNote:rfn,dx,sessionDate,
         subjective,objective,measures,assessment,goals,hep,education,additionalNotes,
-        functionalScores:Object.fromEntries(Object.entries(fscores).filter(([k,v])=>v!==""&&v!=null))})}
+        functionalScores:Object.fromEntries(Object.entries(fscores).filter(([k,v])=>v!==""&&v!=null)),progressPct:isFunction?progressPct:null})}
         className="w-full py-4 rounded-2xl font-bold text-[15px] text-white" style={{background:can?C.ink:"#C9CDD2",boxShadow:can?"0 8px 20px rgba(30,42,58,0.25)":"none"}}>
         {can?"Complete & submit for review":isAssess?"Add diagnosis to submit":"Log pain + response"}</button></div>
     <DxSheet open={sheet} onClose={()=>setSheet(false)} onPick={setDx}/>

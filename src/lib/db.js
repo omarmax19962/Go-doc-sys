@@ -70,6 +70,7 @@ export const fromPatient = (r) => ({
   referrerId: r.referrer_id ?? null,
   referrerConsent: !!r.referrer_consent,
   protocol: r.protocol || null,
+  progressTrack: r.progress_track || null,
   createdAt: r.created_at || null,
 })
 export const toPatient = (p) => ({
@@ -214,6 +215,7 @@ export const fromNote = (r) => ({
   patientSummaryAr: r.patient_summary_ar || '',
   patientSummaryEdited: !!r.patient_summary_edited,
   functionalScores: r.functional_scores || null,
+  progressPct: (r.progress_pct ?? null),
 })
 export const toNote = (n) => ({
   patient_id: n.patientId,
@@ -245,6 +247,7 @@ export const toNote = (n) => ({
   patient_summary_ar: n.patientSummaryAr ? n.patientSummaryAr.trim() : null,
   patient_summary_edited: !!n.patientSummaryEdited,
   functional_scores: (n.functionalScores && Object.keys(n.functionalScores).length) ? n.functionalScores : null,
+  progress_pct: (n.progressPct === '' || n.progressPct == null) ? null : Number(n.progressPct),
 })
 
 // ---- EXERCISES ----
