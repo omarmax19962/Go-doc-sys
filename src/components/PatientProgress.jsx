@@ -58,6 +58,59 @@ function Chart({ points, yMax, rtl, color, caption }) {
   )
 }
 
+// Neuro / function view: an independence gauge (0→100 toward "on your own") + a
+// rising filled trend. Framed around GAINS going up, unlike the pain line.
+function FunctionViz({ points, first, last, en, rtl }) {
+  const bands = en ? ['A lot of help', 'Some help', 'A little help', 'On your own']
+                   : ['مساعدة كبيرة', 'مساعدة متوسطة', 'مساعدة بسيطة', 'استقلالية']
+  if (!points.length) {
+    return (
+      <div style={{ textAlign: 'center', padding: '14px 8px' }}>
+        <div style={{ fontSize: 34 }}>🌱</div>
+        <div style={{ fontSize: 13, color: C.grey, marginTop: 6, lineHeight: 1.7 }}>
+          {en ? "We'll start tracking your independence from your next session — you'll see it climb here."
+              : 'هنبدأ نقيس استقلاليتك من الجلسة الجاية — وهتشوفها بتزيد هنا خطوة بخطوة.'}
+        </div>
+      </div>
+    )
+  }
+  const pct = Math.max(0, Math.min(100, last ?? 0))
+  const W = 320, H = 96, pad = 18
+  const xs = (i) => { const t = points.length === 1 ? 1 : i / (points.length - 1); const tt = rtl ? 1 - t : t; return pad + tt * (W - pad * 2) }
+  const ys = (v) => H - 14 - (v / 100) * (H - 28)
+  const line = points.map((p, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(p.v).toFixed(1)}`).join(' ')
+  const area = points.length >= 2 ? `${line} L${xs(points.length - 1)},${H - 14} L${xs(0)},${H - 14} Z` : ''
+  return (
+    <div>
+      {/* big current level */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, justifyContent: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: 42, fontWeight: 800, color: C.green, fontFamily: 'Georgia, serif', lineHeight: 1 }}>{pct}%</span>
+        <span style={{ fontSize: 13, color: C.grey }}>{en ? 'independence now' : 'استقلاليتك دلوقتي'}</span>
+      </div>
+      {/* segmented gauge, always LTR 0→100 */}
+      <div dir="ltr" style={{ position: 'relative', height: 16, borderRadius: 999, background: '#ECE6DA', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, left: 0, width: `${pct}%`, background: `linear-gradient(90deg, ${C.soft}, ${C.green})`, borderRadius: 999, transition: 'width .4s' }} />
+        {[25, 50, 75].map((t) => <div key={t} style={{ position: 'absolute', top: 0, bottom: 0, left: `${t}%`, width: 2, background: '#F4F1EA' }} />)}
+      </div>
+      <div dir="ltr" style={{ display: 'flex', marginTop: 4 }}>
+        {bands.map((b, i) => <span key={i} style={{ flex: 1, textAlign: 'center', fontSize: 9, color: C.grey }}>{b}</span>)}
+      </div>
+      {/* rising trend */}
+      {points.length >= 2 && (
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={en ? 'independence trend' : 'تطور الاستقلالية'} style={{ display: 'block', marginTop: 12 }}>
+          <defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={C.green} stopOpacity="0.28" /><stop offset="1" stopColor={C.green} stopOpacity="0.02" /></linearGradient></defs>
+          {area && <path d={area} fill="url(#fg)" />}
+          <path d={line} fill="none" stroke={C.green} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          {points.map((p, i) => <circle key={i} cx={xs(i)} cy={ys(p.v)} r={i === points.length - 1 ? 5 : 3} fill={i === points.length - 1 ? C.green : '#fff'} stroke={C.green} strokeWidth="2" />)}
+        </svg>
+      )}
+      <div style={{ fontSize: 11, color: C.grey, textAlign: 'center', marginTop: 4 }}>
+        {en ? 'higher = more independent · by session' : 'رقم أعلى = استقلالية أكتر · بالجلسة'}
+      </div>
+    </div>
+  )
+}
+
 export default function PatientProgress() {
   const token = patientToken()
   const [lang, setLang] = useState('ar')
@@ -97,8 +150,11 @@ export default function PatientProgress() {
   const points = present.map((x, k) => ({ n: k + 1, v: x.v }))
 
   const done = (d.sessions || []).length
-  const next = d.nextVisit ? { date: d.nextVisit.date, time: d.nextVisit.time, physio: d.nextVisit.physio, hasTime: !!d.nextVisit.time }
-    : (d.nextNoteDate ? { date: d.nextNoteDate, time: null, physio: d.physio, hasTime: false } : null)
+  const clean = (s) => (s && String(s).trim() ? String(s).trim() : null)   // treat '' as missing
+  const nvDate = d.nextVisit && clean(d.nextVisit.date)
+  const nnDate = clean(d.nextNoteDate)
+  const next = nvDate ? { date: nvDate, time: clean(d.nextVisit.time), physio: d.nextVisit.physio, hasTime: !!clean(d.nextVisit.time) }
+    : (nnDate ? { date: nnDate, time: null, physio: d.physio, hasTime: false } : null)
 
   // headline
   let headline, tone = 'neutral'
@@ -151,15 +207,15 @@ export default function PatientProgress() {
       {/* progress */}
       <Card>
         <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.teal, textTransform: 'uppercase', marginBottom: 6 }}>{en ? 'Your progress' : 'تقدمك'}</div>
-        <div style={{ fontSize: 17, fontWeight: 800, color: toneColor, marginBottom: 8, lineHeight: 1.5 }}>{headline}</div>
-        {points.length >= 1 && (
-          <>
-            <Chart points={points} yMax={track === 'pain' ? 10 : 100} rtl={!en} color={toneColor === C.ink ? C.teal : toneColor} caption={headline} />
-            <div style={{ fontSize: 11, color: C.grey, textAlign: 'center', marginTop: 2 }}>
-              {track === 'pain' ? (en ? 'lower = less pain · by session' : 'رقم أقل = ألم أقل · بالجلسة') : (en ? 'independence level · by session' : 'مستوى الاستقلالية · بالجلسة')}
-            </div>
-          </>
-        )}
+        <div style={{ fontSize: 17, fontWeight: 800, color: toneColor, marginBottom: 10, lineHeight: 1.5 }}>{headline}</div>
+        {track === 'function'
+          ? <FunctionViz points={points} first={first} last={last} en={en} rtl={!en} />
+          : points.length >= 1 && (
+            <>
+              <Chart points={points} yMax={10} rtl={!en} color={toneColor === C.ink ? C.teal : toneColor} caption={headline} />
+              <div style={{ fontSize: 11, color: C.grey, textAlign: 'center', marginTop: 2 }}>{en ? 'lower = less pain · by session' : 'رقم أقل = ألم أقل · بالجلسة'}</div>
+            </>
+          )}
       </Card>
 
       {/* sessions done */}
