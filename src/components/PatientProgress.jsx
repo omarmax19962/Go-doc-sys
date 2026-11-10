@@ -117,6 +117,7 @@ export default function PatientProgress() {
   const [state, setState] = useState({ loading: true, data: null, error: null })
   const [showAll, setShowAll] = useState(false)
   const [openSet, setOpenSet] = useState({})
+  const [metricPick, setMetricPick] = useState(null)   // active progress tab: 'pain' | 'function'
 
   useEffect(() => {
     let on = true
@@ -142,14 +143,24 @@ export default function PatientProgress() {
   if (state.loading) return <Shell dir="rtl"><div style={{ textAlign: 'center', padding: 60, color: C.grey }}>…</div></Shell>
   if (!d) return <NotFound />
 
-  // build series
-  const series = (d.sessions || [])
-    .map((s) => (track === 'pain' ? s.pain : s.progress))
-    .map((v) => (v === null || v === undefined ? null : Number(v)))
-  const present = series.map((v, i) => ({ v, i })).filter((x) => x.v !== null && !isNaN(x.v))
-  const first = present.length ? present[0].v : null
-  const last = present.length ? present[present.length - 1].v : null
-  const points = present.map((x, k) => ({ n: k + 1, v: x.v }))
+  // build a per-metric series (each session's value for that metric, in order)
+  const buildSeries = (which) => {
+    const arr = (d.sessions || [])
+      .map((s) => (which === 'pain' ? s.pain : s.progress))
+      .map((v) => (v === null || v === undefined ? null : Number(v)))
+    const present = arr.map((v, i) => ({ v, i })).filter((x) => x.v !== null && !isNaN(x.v))
+    return { present, first: present.length ? present[0].v : null, last: present.length ? present[present.length - 1].v : null, points: present.map((x, k) => ({ n: k + 1, v: x.v })) }
+  }
+  const painS = buildSeries('pain')
+  const funcS = buildSeries('function')
+
+  // neuro patients carry BOTH measures (pain + independence) as filter tabs;
+  // ortho shows pain only. Default to the measure that already has data.
+  const isNeuro = track === 'function'
+  const metricTabs = isNeuro ? ['function', 'pain'] : ['pain']
+  const defaultMetric = isNeuro ? (funcS.present.length ? 'function' : 'pain') : 'pain'
+  const metric = metricTabs.includes(metricPick) ? metricPick : defaultMetric
+  const { present, first, last, points } = metric === 'pain' ? painS : funcS
 
   const done = (d.sessions || []).length
   const clean = (s) => (s && String(s).trim() ? String(s).trim() : null)   // treat '' as missing
@@ -158,21 +169,21 @@ export default function PatientProgress() {
   const next = nvDate ? { date: nvDate, time: clean(d.nextVisit.time), physio: d.nextVisit.physio, hasTime: !!clean(d.nextVisit.time) }
     : (nnDate ? { date: nnDate, time: null, physio: d.physio, hasTime: false } : null)
 
-  // headline
+  // headline for the active measure
   let headline, tone = 'neutral'
-  if (track === 'pain') {
+  if (metric === 'pain') {
     const delta = first != null && last != null ? first - last : null
-    if (present.length === 0) headline = en ? "We'll start tracking from your first session" : 'هنبدأ نتابع الألم من أول جلسة'
+    if (present.length === 0) headline = en ? "We'll start tracking pain from your first session" : 'هنبدأ نقيس الألم من أول جلسة'
     else if (present.length === 1) headline = en ? `Starting point: pain ${last}/10` : `نقطة البداية: الألم ${last} من 10`
     else if (delta >= 2) { headline = en ? `Pain went down from ${first} to ${last}` : `الألم نزل من ${first} لـ ${last}`; tone = 'good' }
     else if (Math.abs(delta) < 2) headline = en ? `Pain is steady around ${last}` : `الألم ثابت تقريباً عند ${last}`
     else { headline = en ? `Pain went up from ${first} to ${last} — your physio is on it` : `الألم زاد من ${first} لـ ${last} — دكتورك متابع معاك`; tone = 'amber' }
   } else {
     const delta = first != null && last != null ? last - first : null
-    if (present.length === 0) headline = en ? "We'll start tracking your progress from your first session" : 'هنبدأ نتابع تقدمك من أول جلسة'
+    if (present.length === 0) headline = en ? "We'll start measuring your independence from your first rated session" : 'هنبدأ نقيس استقلاليتك من أول جلسة تتقيّم'
     else if (present.length === 1) headline = en ? `Starting point: ${last}%` : `نقطة البداية: ${last}%`
-    else if (delta >= 10) { headline = en ? `Your level improved from ${first}% to ${last}%` : `مستواك اتحسن من ${first}% لـ ${last}%`; tone = 'good' }
-    else if (Math.abs(delta) < 10) headline = en ? `Your level is steady at ${last}%` : `مستواك ثابت عند ${last}%`
+    else if (delta >= 10) { headline = en ? `Your independence improved from ${first}% to ${last}%` : `استقلاليتك اتحسنت من ${first}% لـ ${last}%`; tone = 'good' }
+    else if (Math.abs(delta) < 10) headline = en ? `Your independence is steady at ${last}%` : `استقلاليتك ثابتة عند ${last}%`
     else { headline = en ? `A small dip — your physio is adjusting the plan` : `في تراجع بسيط — دكتورك بيعدّل الخطة معاك`; tone = 'amber' }
   }
   const toneColor = tone === 'good' ? C.green : tone === 'amber' ? C.amber : C.ink
@@ -208,16 +219,29 @@ export default function PatientProgress() {
 
       {/* progress */}
       <Card>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.teal, textTransform: 'uppercase', marginBottom: 6 }}>{en ? 'Your progress' : 'تقدمك'}</div>
-        <div style={{ fontSize: 17, fontWeight: 800, color: toneColor, marginBottom: 10, lineHeight: 1.5 }}>{headline}</div>
-        {track === 'function'
-          ? <FunctionViz points={points} first={first} last={last} en={en} rtl={!en} />
-          : points.length >= 1 && (
-            <>
-              <Chart points={points} yMax={10} rtl={!en} color={toneColor === C.ink ? C.teal : toneColor} caption={headline} />
-              <div style={{ fontSize: 11, color: C.grey, textAlign: 'center', marginTop: 2 }}>{en ? 'lower = less pain · by session' : 'رقم أقل = ألم أقل · بالجلسة'}</div>
-            </>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.teal, textTransform: 'uppercase' }}>{en ? 'Your progress' : 'تقدمك'}</div>
+          {metricTabs.length > 1 && (
+            <div style={{ display: 'inline-flex', background: '#EEF3F2', borderRadius: 999, padding: 3, gap: 2 }}>
+              {metricTabs.map((m) => {
+                const on = metric === m
+                const label = m === 'pain' ? (en ? 'Pain' : 'الألم') : (en ? 'Independence' : 'الاستقلالية')
+                return (
+                  <button key={m} onClick={() => setMetricPick(m)} style={{ fontSize: 12, fontWeight: 700, padding: '5px 13px', borderRadius: 999, border: 'none', cursor: 'pointer', background: on ? '#fff' : 'transparent', color: on ? C.ink : C.grey, boxShadow: on ? '0 1px 3px rgba(0,0,0,.08)' : 'none' }}>{label}</button>
+                )
+              })}
+            </div>
           )}
+        </div>
+        <div style={{ fontSize: 17, fontWeight: 800, color: toneColor, marginBottom: 10, lineHeight: 1.5 }}>{headline}</div>
+        {metric === 'function'
+          ? <FunctionViz points={points} first={first} last={last} en={en} rtl={!en} />
+          : (points.length >= 1
+            ? <>
+                <Chart points={points} yMax={10} rtl={!en} color={toneColor === C.ink ? C.teal : toneColor} caption={headline} />
+                <div style={{ fontSize: 11, color: C.grey, textAlign: 'center', marginTop: 2 }}>{en ? 'lower = less pain · by session' : 'رقم أقل = ألم أقل · بالجلسة'}</div>
+              </>
+            : <div style={{ fontSize: 12.5, color: C.grey, textAlign: 'center', padding: '14px 0' }}>{en ? "We'll start tracking pain from your first session." : 'هنبدأ نقيس الألم من أول جلسة.'}</div>)}
       </Card>
 
       {/* sessions done — full history, each session openable */}
@@ -225,7 +249,7 @@ export default function PatientProgress() {
         <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginBottom: 4 }}>{en ? `Sessions done (${done})` : `الجلسات اللي ${fem ? 'خلصتيها' : 'خلصتها'} (${done})`}</div>
         <div style={{ fontSize: 12, color: C.grey, marginBottom: 8 }}>{en ? 'Tap any session to open its details.' : 'دوس على أي جلسة تفتح تفاصيلها.'}</div>
         {(showAll ? last5 : last5.slice(0, 6)).map((s, i) => {
-          const metric = track === 'pain' ? (s.pain != null ? `${en ? 'pain' : 'ألم'} ${s.pain}/10` : null) : (s.progress != null ? `${s.progress}%` : null)
+          const chipVal = metric === 'pain' ? (s.pain != null ? `${en ? 'pain' : 'ألم'} ${s.pain}/10` : null) : (s.progress != null ? `${s.progress}%` : null)
           const num = done - i   // newest first → session number counts down
           const hasNote = !!(s.note && String(s.note).trim())
           const isOpen = !!openSet[i]
@@ -240,7 +264,7 @@ export default function PatientProgress() {
                   <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap' }}>{fmtDate(s.date, lang)}</span>
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
-                  {metric && <span style={{ fontSize: 11, fontWeight: 700, color: C.teal, background: '#EAF6F4', borderRadius: 999, padding: '2px 9px' }}>{metric}</span>}
+                  {chipVal && <span style={{ fontSize: 11, fontWeight: 700, color: C.teal, background: '#EAF6F4', borderRadius: 999, padding: '2px 9px' }}>{chipVal}</span>}
                   {hasNote && <span style={{ fontSize: 10, color: C.grey, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>}
                 </span>
               </button>
