@@ -44,29 +44,50 @@ const to12 = (t) => {
   return `${h12}:${String(m || 0).padStart(2, '0')} ${ap}`
 }
 
-// Small dir-aware SVG line chart. values: array of {n, v}. yMax, invertGood for pain (lower=better).
-function Chart({ points, yMax, rtl, color, caption }) {
-  const W = 320, H = 150, pad = 26
+// Small dir-aware SVG line chart. values: array of {n, v}. yMax for scale (pain: lower=better).
+function Chart({ points, yMax, rtl, color, caption, en }) {
+  const W = 320, H = 158, padX = 28, padTop = 18, padBot = 16
   if (!points.length) return null
+  const innerH = H - padTop - padBot
   const xs = (i) => {
     const t = points.length === 1 ? 0.5 : i / (points.length - 1)
     const tt = rtl ? 1 - t : t
-    return pad + tt * (W - pad * 2)
+    return padX + tt * (W - padX * 2)
   }
-  const ys = (v) => H - pad - (v / yMax) * (H - pad * 2)
+  const ys = (v) => padTop + innerH - (Math.max(0, Math.min(yMax, v)) / yMax) * innerH
   const path = points.map((p, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(p.v).toFixed(1)}`).join(' ')
   const last = points[points.length - 1]
   const lastI = points.length - 1
+  const avg = points.reduce((a, p) => a + p.v, 0) / points.length
+  const avgY = ys(avg)
+  const ticks = [0, yMax / 2, yMax]
+  const sparse = points.length <= 9
+  const pillX = W / 2   // centered on the average line
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={caption} style={{ display: 'block' }}>
-      {[0, 0.5, 1].map((g) => (
-        <line key={g} x1={pad} x2={W - pad} y1={pad + g * (H - pad * 2)} y2={pad + g * (H - pad * 2)} stroke={C.line} strokeWidth="1" />
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={caption} style={{ display: 'block', overflow: 'visible' }}>
+      {/* horizontal gridlines + y-axis labels */}
+      {ticks.map((t, k) => (
+        <g key={k}>
+          <line x1={padX} x2={W - padX} y1={ys(t)} y2={ys(t)} stroke="#EEECE6" strokeWidth="1" />
+          <text x={W - padX + 5} y={ys(t) + 3} fill="#B6BEC0" fontSize="9" textAnchor="start">{Math.round(t)}</text>
+        </g>
       ))}
+      {/* sparse vertical gridlines (only when few points) */}
+      {sparse && points.map((p, i) => (
+        <line key={i} x1={xs(i)} x2={xs(i)} y1={padTop} y2={padTop + innerH} stroke="#F0EEE8" strokeWidth="1" strokeDasharray="2 4" />
+      ))}
+      {/* average line + pill */}
+      <line x1={padX} x2={W - padX} y1={avgY} y2={avgY} stroke={color} strokeWidth="1.4" strokeDasharray="5 4" opacity="0.55" />
+      <g>
+        <rect x={pillX - 30} y={avgY - 10} width="60" height="19" rx="9.5" fill={color} />
+        <text x={pillX} y={avgY + 3.5} fill="#fff" fontSize="10" fontWeight="800" textAnchor="middle">{en ? `Avg ${avg.toFixed(0)}` : `متوسط ${avg.toFixed(0)}`}</text>
+      </g>
+      {/* line + markers */}
       <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
       {points.map((p, i) => (
         <circle key={i} cx={xs(i)} cy={ys(p.v)} r={i === lastI ? 5 : 3} fill={i === lastI ? color : '#fff'} stroke={color} strokeWidth="2" />
       ))}
-      <text x={xs(lastI)} y={ys(last.v) - 9} fill={C.ink} fontSize="13" fontWeight="800" textAnchor="middle">{last.v}</text>
+      <text x={xs(lastI)} y={ys(last.v) - 10} fill={C.ink} fontSize="13" fontWeight="800" textAnchor="middle">{last.v}</text>
     </svg>
   )
 }
@@ -247,12 +268,18 @@ export default function PatientProgress() {
             </div>
           )}
         </div>
+        {tone !== 'neutral' && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 8, padding: '4px 10px 4px 7px', borderRadius: 999, background: tone === 'good' ? 'rgba(47,158,111,.12)' : 'rgba(201,138,43,.14)' }}>
+            <span style={{ width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: tone === 'good' ? C.green : C.amber, color: '#fff', fontSize: 11, fontWeight: 900, lineHeight: 1 }}>{tone === 'good' ? '↗' : '↘'}</span>
+            <span style={{ fontSize: 12, fontWeight: 800, color: tone === 'good' ? C.green : C.amber }}>{tone === 'good' ? (en ? 'Improving' : 'في تحسّن') : (en ? 'Keep an eye' : 'محتاجة متابعة')}</span>
+          </div>
+        )}
         <div style={{ fontSize: 17, fontWeight: 800, color: toneColor, marginBottom: 10, lineHeight: 1.5 }}>{headline}</div>
         {metric === 'function'
           ? <FunctionViz points={points} first={first} last={last} en={en} rtl={!en} />
           : (points.length >= 1
             ? <>
-                <Chart points={points} yMax={10} rtl={!en} color={toneColor === C.ink ? C.teal : toneColor} caption={headline} />
+                <Chart points={points} yMax={10} rtl={!en} color={toneColor === C.ink ? C.teal : toneColor} caption={headline} en={en} />
                 <div style={{ fontSize: 11, color: C.grey, textAlign: 'center', marginTop: 2 }}>{en ? 'lower = less pain · by session' : 'رقم أقل = ألم أقل · بالجلسة'}</div>
               </>
             : <div style={{ fontSize: 12.5, color: C.grey, textAlign: 'center', padding: '14px 0' }}>{en ? "We'll start tracking pain from your first session." : 'هنبدأ نقيس الألم من أول جلسة.'}</div>)}
@@ -447,13 +474,13 @@ function SessionSheet({ s, num, lang, en, onClose }) {
 
 function Shell({ children, dir }) {
   return (
-    <div dir={dir} style={{ minHeight: '100vh', background: '#DCE2E4', display: 'flex', justifyContent: 'center', fontFamily: "'IBM Plex Sans Arabic','Tajawal',system-ui,sans-serif" }}>
-      <div style={{ width: '100%', maxWidth: 480, background: '#F4F1EA', minHeight: '100vh', padding: '20px 16px 28px' }}>{children}</div>
+    <div dir={dir} style={{ minHeight: '100vh', background: '#ECECEE', display: 'flex', justifyContent: 'center', fontFamily: "'IBM Plex Sans Arabic','Tajawal',system-ui,sans-serif" }}>
+      <div style={{ width: '100%', maxWidth: 480, minHeight: '100vh', padding: '22px 16px 28px', background: 'radial-gradient(130% 62% at 50% -6%, #FBEEE6 0%, #F7F1E9 40%, #F4F1EA 100%)' }}>{children}</div>
     </div>
   )
 }
 function Card({ children, accent }) {
-  return <div style={{ background: '#fff', border: `1px solid ${accent ? '#A9D9D1' : '#E3E7E5'}`, borderRadius: 18, padding: 16, marginTop: 14 }}>{children}</div>
+  return <div style={{ background: '#fff', border: `1px solid ${accent ? '#BFE3DC' : 'rgba(227,231,229,.8)'}`, borderRadius: 22, padding: 17, marginTop: 14, boxShadow: '0 1px 2px rgba(16,42,46,.04), 0 10px 26px rgba(16,42,46,.045)' }}>{children}</div>
 }
 function NotFound() {
   return (
