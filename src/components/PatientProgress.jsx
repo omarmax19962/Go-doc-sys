@@ -115,9 +115,9 @@ export default function PatientProgress() {
   const token = patientToken()
   const [lang, setLang] = useState('ar')
   const [state, setState] = useState({ loading: true, data: null, error: null })
-  const [showAll, setShowAll] = useState(false)
-  const [openSet, setOpenSet] = useState({})
   const [metricPick, setMetricPick] = useState(null)   // active progress tab: 'pain' | 'function'
+  const [allView, setAllView] = useState(false)        // full "all sessions" screen
+  const [sheet, setSheet] = useState(null)             // { s, num } open in the detail sheet
 
   useEffect(() => {
     let on = true
@@ -192,7 +192,8 @@ export default function PatientProgress() {
   const last5 = (d.sessions || []).slice().reverse()
 
   return (
-    <Shell dir={dir}>
+    <>
+      <Shell dir={dir}>
       {/* header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div style={{ fontFamily: 'Georgia, serif', fontWeight: 800, fontSize: 22, color: C.ink }}>Go Doc</div>
@@ -244,48 +245,176 @@ export default function PatientProgress() {
             : <div style={{ fontSize: 12.5, color: C.grey, textAlign: 'center', padding: '14px 0' }}>{en ? "We'll start tracking pain from your first session." : 'هنبدأ نقيس الألم من أول جلسة.'}</div>)}
       </Card>
 
-      {/* sessions done — full history, each session openable */}
+      {/* sessions done — tap a session to open its full detail sheet */}
       <Card>
         <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginBottom: 4 }}>{en ? `Sessions done (${done})` : `الجلسات اللي ${fem ? 'خلصتيها' : 'خلصتها'} (${done})`}</div>
-        <div style={{ fontSize: 12, color: C.grey, marginBottom: 8 }}>{en ? 'Tap any session to open its details.' : 'دوس على أي جلسة تفتح تفاصيلها.'}</div>
-        {(showAll ? last5 : last5.slice(0, 6)).map((s, i) => {
-          const chipVal = metric === 'pain' ? (s.pain != null ? `${en ? 'pain' : 'ألم'} ${s.pain}/10` : null) : (s.progress != null ? `${s.progress}%` : null)
-          const num = done - i   // newest first → session number counts down
-          const hasNote = !!(s.note && String(s.note).trim())
-          const isOpen = !!openSet[i]
-          return (
-            <div key={i} style={{ borderTop: i ? `1px solid ${C.line}` : 'none' }}>
-              <button
-                onClick={() => hasNote && setOpenSet((o) => ({ ...o, [i]: !o[i] }))}
-                style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 0', background: 'none', border: 'none', textAlign: en ? 'left' : 'right', cursor: hasNote ? 'pointer' : 'default', font: 'inherit' }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: C.teal, background: '#EAF6F4', borderRadius: 8, padding: '2px 7px', whiteSpace: 'nowrap' }}>{en ? `#${num}` : `جلسة ${num}`}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap' }}>{fmtDate(s.date, lang)}</span>
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
-                  {chipVal && <span style={{ fontSize: 11, fontWeight: 700, color: C.teal, background: '#EAF6F4', borderRadius: 999, padding: '2px 9px' }}>{chipVal}</span>}
-                  {hasNote && <span style={{ fontSize: 10, color: C.grey, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>}
-                </span>
-              </button>
-              {isOpen && hasNote && <div dir="auto" style={{ fontSize: 12.5, color: C.grey, margin: '0 0 10px', whiteSpace: 'pre-line', borderInlineStart: `3px solid ${C.soft}`, paddingInlineStart: 8 }}>{s.note}</div>}
-            </div>
-          )
-        })}
+        <div style={{ fontSize: 12, color: C.grey, marginBottom: 8 }}>{en ? 'Tap any session to see everything your physio recorded.' : 'دوس على أي جلسة تشوف كل اللي سجّله دكتورك فيها.'}</div>
+        {last5.slice(0, 6).map((s, i) => (
+          <SessionRow key={i} s={s} num={done - i} metric={metric} lang={lang} en={en} border={!!i} onOpen={(ss, n) => setSheet({ s: ss, num: n })} />
+        ))}
         {done > 6 && (
-          <button
-            onClick={() => setShowAll((v) => !v)}
-            style={{ width: '100%', marginTop: 10, padding: '9px 0', fontSize: 12.5, fontWeight: 700, color: C.teal, background: '#F4FBFC', border: `1px solid ${C.soft}`, borderRadius: 12, cursor: 'pointer' }}
-          >
-            {showAll ? (en ? 'Show less' : 'عرض أقل') : (en ? `Show all ${done} sessions` : `عرض كل الجلسات (${done})`)}
+          <button onClick={() => setAllView(true)} style={{ width: '100%', marginTop: 10, padding: '10px 0', fontSize: 12.5, fontWeight: 700, color: C.teal, background: '#F4FBFC', border: `1px solid ${C.soft}`, borderRadius: 12, cursor: 'pointer' }}>
+            {en ? `Show all ${done} sessions` : `عرض كل الجلسات (${done})`}
           </button>
         )}
       </Card>
 
-      <div style={{ textAlign: 'center', fontSize: 11.5, color: C.grey, marginTop: 14, lineHeight: 1.7 }}>
-        {en ? 'This page is private to you — please don’t share it.' : 'الصفحة دي خاصة بيك — متشاركهاش.'}
+        <div style={{ textAlign: 'center', fontSize: 11.5, color: C.grey, marginTop: 14, lineHeight: 1.7 }}>
+          {en ? 'This page is private to you — please don’t share it.' : 'الصفحة دي خاصة بيك — متشاركهاش.'}
+        </div>
+      </Shell>
+
+      {allView && (
+        <AllSessions sessions={last5} done={done} metric={metric} lang={lang} en={en} fem={fem}
+          onOpen={(ss, n) => setSheet({ s: ss, num: n })} onClose={() => setAllView(false)} />
+      )}
+      {sheet && <SessionSheet s={sheet.s} num={sheet.num} lang={lang} en={en} onClose={() => setSheet(null)} />}
+    </>
+  )
+}
+
+/* One row in a session list → opens the detail sheet. */
+function SessionRow({ s, num, metric, lang, en, border, onOpen }) {
+  const chipVal = metric === 'pain'
+    ? (s.pain != null ? `${en ? 'pain' : 'ألم'} ${s.pain}/10` : null)
+    : (s.progress != null ? `${s.progress}%` : null)
+  return (
+    <button onClick={() => onOpen(s, num)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '11px 0', background: 'none', border: 'none', borderTop: border ? `1px solid ${C.line}` : 'none', textAlign: en ? 'left' : 'right', cursor: 'pointer', font: 'inherit' }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.teal, background: '#EAF6F4', borderRadius: 8, padding: '2px 7px', whiteSpace: 'nowrap' }}>{en ? `#${num}` : `جلسة ${num}`}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap' }}>{fmtDate(s.date, lang)}</span>
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+        {chipVal && <span style={{ fontSize: 11, fontWeight: 700, color: C.teal, background: '#EAF6F4', borderRadius: 999, padding: '2px 9px' }}>{chipVal}</span>}
+        <span style={{ fontSize: 17, color: '#B8C2C9', lineHeight: 1 }}>{en ? '›' : '‹'}</span>
+      </span>
+    </button>
+  )
+}
+
+/* Full-screen "all sessions" page. */
+function AllSessions({ sessions, done, metric, lang, en, fem, onOpen, onClose }) {
+  return (
+    <div dir={en ? 'ltr' : 'rtl'} style={{ position: 'fixed', inset: 0, zIndex: 55, background: '#F4F1EA', overflowY: 'auto', fontFamily: "'IBM Plex Sans Arabic','Tajawal',system-ui,sans-serif" }}>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '16px 16px 40px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, color: C.teal, background: '#fff', border: `1px solid ${C.soft}`, borderRadius: 999, padding: '7px 14px', cursor: 'pointer' }}>{en ? '‹ Back' : 'رجوع ›'}</button>
+          <div style={{ fontSize: 19, fontWeight: 800, color: C.ink, fontFamily: 'Georgia, serif' }}>{en ? `All sessions (${done})` : `كل الجلسات (${done})`}</div>
+        </div>
+        <Card>
+          {sessions.map((s, i) => (
+            <SessionRow key={i} s={s} num={done - i} metric={metric} lang={lang} en={en} border={!!i} onOpen={onOpen} />
+          ))}
+        </Card>
+        <div style={{ textAlign: 'center', fontSize: 11.5, color: C.grey, marginTop: 14 }}>
+          {en ? 'This page is private to you — please don’t share it.' : 'الصفحة دي خاصة بيك — متشاركهاش.'}
+        </div>
       </div>
-    </Shell>
+    </div>
+  )
+}
+
+const RESP_AR = { better: 'تحسّن', same: 'زي ما هي', mixed: 'متفاوتة', worse: 'أسوأ' }
+const TYPE_AR = { Assessment: 'تقييم', Treatment: 'علاج', 'Re-assessment': 'إعادة تقييم', Reassessment: 'إعادة تقييم', Consultation: 'استشارة', Discharge: 'إنهاء علاج' }
+
+/* Bottom sheet — the full session, everything the doctor recorded. */
+function SessionSheet({ s, num, lang, en, onClose }) {
+  const typeLabel = en ? s.type : (TYPE_AR[s.type] || s.type)
+  const resp = s.response ? (en ? s.response : (RESP_AR[s.response] || s.response)) : null
+  const painBefore = s.painBefore != null ? s.painBefore : (s.pain != null ? s.pain : null)  // fallback for old RPC
+  const summary = (s.summary && String(s.summary).trim()) ? s.summary : (s.note || '')
+  const list = (arr) => Array.isArray(arr) ? arr.filter(Boolean) : []
+  const ex = list(s.exercises), mod = list(s.modalities)
+  // narrative sections the doctor wrote, in reading order (patient-friendly labels)
+  const sections = [
+    ['subjective', en ? 'What you reported' : 'اللي اشتكيت منه', s.subjective],
+    ['objective', en ? 'Examination' : 'اللي لقيناه في الفحص', s.objective],
+    ['measures', en ? 'Measurements' : 'القياسات', s.measures],
+    ['assessment', en ? 'Assessment' : 'تقييم الحالة', s.assessment],
+    ['goals', en ? 'Goals' : 'الأهداف', s.goals],
+    ['hep', en ? 'Home exercises' : 'تمارين تعملها في البيت', s.hep],
+    ['education', en ? 'Advice' : 'نصايح وإرشادات', s.education],
+    ['plan', en ? 'Next steps' : 'الخطة الجاية', s.plan],
+    ['additionalNotes', en ? 'More notes' : 'ملاحظات إضافية', s.additionalNotes],
+  ].filter(([, , v]) => v && String(v).trim())
+  const stop = (e) => e.stopPropagation()
+  const Stat = ({ label, value }) => (
+    <div style={{ flex: '1 1 90px', background: '#fff', border: '1px solid #E3E7E5', borderRadius: 14, padding: '10px 12px' }}>
+      <div style={{ fontSize: 11, color: C.grey, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: C.ink }}>{value}</div>
+    </div>
+  )
+  const Section = ({ label, children }) => (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: .5, color: C.teal, textTransform: 'uppercase', marginBottom: 5 }}>{label}</div>
+      {children}
+    </div>
+  )
+  const anyMetric = painBefore != null || s.painAfter != null || s.progress != null || resp
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(15,30,30,.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={stop} dir={en ? 'ltr' : 'rtl'} style={{ width: '100%', maxWidth: 480, background: '#F4F1EA', borderRadius: '22px 22px 0 0', padding: '10px 18px 24px', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 -8px 30px rgba(0,0,0,.18)', fontFamily: "'IBM Plex Sans Arabic','Tajawal',system-ui,sans-serif" }}>
+        <div style={{ width: 40, height: 5, borderRadius: 999, background: '#CBD3D2', margin: '4px auto 16px' }} />
+        {/* header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ fontSize: 21, fontWeight: 800, color: C.ink, fontFamily: 'Georgia, serif' }}>{en ? `Session #${num}` : `جلسة ${num}`}</div>
+          {typeLabel && <span style={{ fontSize: 12, fontWeight: 700, color: C.teal, background: '#EAF6F4', borderRadius: 999, padding: '4px 12px', whiteSpace: 'nowrap' }}>{typeLabel}</span>}
+        </div>
+        <div style={{ fontSize: 14, color: C.grey, marginTop: 2 }}>{fmtDate(s.date, lang)}{s.doctor ? ` · ${en ? 'Dr. ' : 'د. '}${s.doctor}` : ''}</div>
+
+        {/* metrics */}
+        {anyMetric && (
+          <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+            {painBefore != null && <Stat label={en ? 'Pain before' : 'الألم قبل'} value={`${painBefore}/10`} />}
+            {s.painAfter != null && <Stat label={en ? 'Pain after' : 'الألم بعد'} value={`${s.painAfter}/10`} />}
+            {s.progress != null && <Stat label={en ? 'Independence' : 'الاستقلالية'} value={`${s.progress}%`} />}
+            {resp && <Stat label={en ? 'Response' : 'الاستجابة'} value={resp} />}
+          </div>
+        )}
+
+        {/* exercises / modalities */}
+        {(ex.length > 0 || mod.length > 0) && (
+          <Section label={en ? 'What we did' : 'اللي عملناه في الجلسة'}>
+            {ex.length > 0 && (
+              <div style={{ marginBottom: mod.length ? 8 : 0 }}>
+                {mod.length > 0 && <div style={{ fontSize: 12, color: C.grey, marginBottom: 4 }}>{en ? 'Exercises' : 'تمارين'}</div>}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {ex.map((e, k) => <span key={k} style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, background: '#fff', border: '1px solid #E3E7E5', borderRadius: 10, padding: '5px 10px' }}>{typeof e === 'string' ? e : (e.name || '')}</span>)}
+                </div>
+              </div>
+            )}
+            {mod.length > 0 && (
+              <div>
+                <div style={{ fontSize: 12, color: C.grey, marginBottom: 4 }}>{en ? 'Modalities' : 'أجهزة ووسائل علاجية'}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {mod.map((e, k) => <span key={k} style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, background: '#fff', border: '1px solid #E3E7E5', borderRadius: 10, padding: '5px 10px' }}>{typeof e === 'string' ? e : (e.name || '')}</span>)}
+                </div>
+              </div>
+            )}
+          </Section>
+        )}
+
+        {/* narrative sections */}
+        {sections.map(([key, label, val]) => (
+          <Section key={key} label={label}>
+            <div dir="auto" style={{ fontSize: 14, lineHeight: 1.9, color: C.ink, whiteSpace: 'pre-line' }}>{val}</div>
+          </Section>
+        ))}
+
+        {/* plain-language summary */}
+        {summary && String(summary).trim() && (
+          <Section label={en ? 'In short' : 'باختصار'}>
+            <div dir="auto" style={{ fontSize: 14, lineHeight: 1.9, color: C.ink, whiteSpace: 'pre-line', background: '#EAF6F4', borderRadius: 12, padding: '10px 12px' }}>{summary}</div>
+          </Section>
+        )}
+
+        {!anyMetric && ex.length === 0 && mod.length === 0 && sections.length === 0 && !(summary && String(summary).trim()) && (
+          <div style={{ fontSize: 13.5, color: C.grey, marginTop: 16 }}>{en ? 'No details were recorded for this session.' : 'مفيش تفاصيل متسجّلة للجلسة دي.'}</div>
+        )}
+
+        <button onClick={onClose} style={{ width: '100%', marginTop: 20, padding: '12px 0', fontSize: 14, fontWeight: 700, color: '#fff', background: C.ink, border: 'none', borderRadius: 14, cursor: 'pointer' }}>{en ? 'Close' : 'تمام'}</button>
+      </div>
+    </div>
   )
 }
 
