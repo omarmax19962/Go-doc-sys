@@ -95,6 +95,7 @@ export const toPatient = (p) => ({
   referrer_id: p.referrerId ?? null,
   referrer_consent: !!p.referrerConsent,
   protocol: p.protocol || null,
+  progress_track: p.progressTrack || null,
 })
 
 // ---- VISITS ----

@@ -3413,6 +3413,111 @@ function SickLeaveModal({patient,onClose}){
   </div>);
 }
 
+/* ---------- PatientLinkModal — admin creates/sends the private progress link ---------- */
+const PUBLIC_BASE = "https://go-doc-sys.vercel.app";
+const genToken = () => {
+  try {
+    const b = new Uint8Array(18); crypto.getRandomValues(b);
+    return btoa(String.fromCharCode(...b)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+  } catch { return (Date.now().toString(36)+Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/gi,"").slice(0,24); }
+};
+function PatientLinkModal({patient,updatePatient,onClose}){
+  const [loading,setLoading]=useState(true);
+  const [link,setLink]=useState(null);       // the live row, or null
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const [copied,setCopied]=useState(false);
+  const autoTrack = patient.progressTrack || (NEURO_DX.test((patient.dx&&patient.dx.label)||"") ? "function" : "pain");
+  const url = link ? `${PUBLIC_BASE}/p/${link.token}` : "";
+  const first = (patient.name||"").split(" ")[0] || "";
+
+  const load = async()=>{
+    setLoading(true); setErr("");
+    const { data, error } = await supabase.from("patient_share_links")
+      .select("*").eq("patient_id", patient.id).is("revoked_at", null)
+      .order("created_at",{ascending:false}).limit(1);
+    if(error){ setErr("مش قادر أقرا اللينكات — تأكد إنك داخل كأدمن."); setLink(null); }
+    else setLink((data&&data[0])||null);
+    setLoading(false);
+  };
+  useEffect(()=>{ load(); /* eslint-disable-next-line */ },[patient.id]);
+
+  const create = async()=>{
+    if(busy) return; setBusy(true); setErr("");
+    let created_by=null; try{ const u=await supabase.auth.getUser(); created_by=u?.data?.user?.id||null; }catch{}
+    const { data, error } = await supabase.from("patient_share_links")
+      .insert({ patient_id:patient.id, token:genToken(), created_by }).select().single();
+    if(error){ setErr("مش قادر أعمل اللينك. "+(error.message||"")); }
+    else setLink(data);
+    setBusy(false);
+  };
+  const revoke = async()=>{
+    if(!link||busy) return;
+    if(!window.confirm("تلغي اللينك ده؟ أي حد معاه اللينك القديم مش هيقدر يفتحه تاني.")) return;
+    setBusy(true); setErr("");
+    const { error } = await supabase.from("patient_share_links")
+      .update({ revoked_at:new Date().toISOString() }).eq("id", link.id);
+    if(error){ setErr("مش قادر ألغي اللينك."); } else setLink(null);
+    setBusy(false);
+  };
+  const copy = async()=>{
+    if(!url) return;
+    try{ await navigator.clipboard.writeText(url); setCopied(true); setTimeout(()=>setCopied(false),1600); }
+    catch{ setErr("انسخ اللينك يدوي من فوق."); }
+  };
+  const waText = `مرحبا ${first} 👋\nده رابط خاص بيك من Go Doc، تقدر تتابع منه جلساتك، تطوّرك، وموعد جلستك الجاية:\n${url}\n\nالرابط خاص بيك لوحدك — من فضلك متشاركهوش مع حد. 💙`;
+  const sendWA = ()=>{ if(!url) return; openWhatsApp(patient.phone, waText); };
+  const setTrack = (t)=>{ if(updatePatient) updatePatient(patient.id,{progressTrack:t}); };
+
+  const chip=(active)=>({background:active?C.ink:"#fff",color:active?"#fff":C.ink2,border:`1px solid ${active?C.ink:C.line}`});
+
+  return(<div className="fixed inset-0 z-[70] flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={onClose}>
+    <div className="w-full max-w-[460px] rounded-3xl overflow-hidden" style={{background:C.bg}} onClick={e=>e.stopPropagation()}>
+      <div className="px-5 py-4 flex items-center justify-between" style={{background:"#fff",borderBottom:`1px solid ${C.line}`}}>
+        <div className="flex items-center gap-2"><Link2 size={18} color={C.ink}/><h2 className="text-[17px] font-bold" style={{fontFamily:HEAD}}>Patient link · رابط المريض</h2></div>
+        <button onClick={onClose}><X size={20} color={C.grey}/></button>
+      </div>
+      <div className="p-5 space-y-3">
+        <div className="rounded-xl px-3.5 py-2.5 text-[12px]" style={{background:"#F4FBFC",border:`1px solid ${C.tealSoft}`,color:C.ink2}}>
+          رابط خاص بـ <b style={{color:C.ink}}>{patient.name}</b> من غير تسجيل دخول — بيشوف جلساته، تطوّره، وموعد جلسته الجاية. مفيش تليفون ولا ملاحظات داخلية ولا فلوس.
+        </div>
+
+        {/* progress track */}
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{color:C.grey}}>شكل التقدّم اللي هيشوفه</div>
+          <div className="flex gap-2">
+            <button onClick={()=>setTrack("pain")} className="flex-1 py-2 rounded-xl text-[12px] font-semibold" style={chip(autoTrack==="pain")}>مقياس الألم (أورثو)</button>
+            <button onClick={()=>setTrack("function")} className="flex-1 py-2 rounded-xl text-[12px] font-semibold" style={chip(autoTrack==="function")}>الاستقلالية (نيورو)</button>
+          </div>
+          {!patient.progressTrack&&<div className="text-[11px] mt-1" style={{color:C.grey}}>متحدد تلقائيًا من التشخيص — اضغط لو عايز تغيّره.</div>}
+        </div>
+
+        {loading ? <div className="text-[13px] py-3 text-center" style={{color:C.grey}}>…بحمّل</div> : (
+          link ? <>
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wide mb-1.5" style={{color:C.grey}}>اللينك</div>
+              <div className="flex items-stretch gap-2">
+                <div className="flex-1 px-3 py-2.5 rounded-xl text-[12px] break-all" style={{background:"#fff",border:`1px solid ${C.line}`,color:C.ink2}}>{url}</div>
+                <button onClick={copy} title="Copy" className="px-3 rounded-xl flex items-center justify-center" style={{background:copied?C.green:C.ink,color:"#fff"}}>{copied?<Check size={16}/>:<Link2 size={16}/>}</button>
+              </div>
+              <div className="text-[11px] mt-1" style={{color:C.grey}}>{link.view_count>0?`اتفتح ${link.view_count} مرة`:"لسه ماتفتحش"}</div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={sendWA} disabled={!patient.phone} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white" style={{background:patient.phone?"rgba(63,167,150,0.95)":"#B8C2C9"}}><MessageCircle size={16}/>{patient.phone?"ابعت واتساب":"مفيش تليفون"}</button>
+              <a href={url} target="_blank" rel="noreferrer" className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-xl font-semibold" style={{background:"#fff",color:C.ink,border:`1px solid ${C.line}`}}><Eye size={15}/>معاينة</a>
+            </div>
+            <button onClick={revoke} disabled={busy} className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[12px] font-semibold" style={{background:"rgba(192,57,43,0.08)",color:C.red,border:`1px solid rgba(192,57,43,0.25)`}}><RotateCcw size={14}/>إلغاء اللينك وعمل واحد جديد</button>
+          </> : <>
+            <button onClick={create} disabled={busy} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white" style={{background:C.ink}}><Link2 size={16}/>{busy?"…":"اعمل لينك للمريض"}</button>
+            {!patient.phone&&<div className="text-[11px] text-center" style={{color:C.grey}}>مفيش تليفون محفوظ — هتقدر تنسخ اللينك بس مش تبعته واتساب.</div>}
+          </>
+        )}
+        {err&&<div className="text-[12px] px-3 py-2 rounded-lg" style={{background:"rgba(192,57,43,0.08)",color:C.red}}>{err}</div>}
+      </div>
+    </div>
+  </div>);
+}
+
 /* Per-session patient-friendly summary: generate (AI w/ local fallback), edit EN/AR, save. */
 function PatientSummaryBlock({note,savePatientSummary,aiSimplifyNote,reload}){
   const hasSaved=!!(note.patientSummaryEn||note.patientSummaryAr);
@@ -3562,6 +3667,7 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
   const[soapVisit,setSoapVisit]=useState(null);
   const[booking,setBooking]=useState(false);
   const[slOpen,setSlOpen]=useState(false);
+  const[linkOpen,setLinkOpen]=useState(false);
   const hist=notes.filter(n=>n.patientId===patient.id).slice().sort((a,b)=>(a.date||"").localeCompare(b.date||""));
   // Bulk: fill plain-language summaries for any sessions that don't have one yet
   // (AI when a key is configured, instant local fallback otherwise). Never
@@ -3644,6 +3750,7 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
             {[["en","EN"],["ar","ع"]].map(([k,l])=>(<button key={k} onClick={()=>setRepLang(k)} className="px-2 h-9 text-[12px] font-bold" style={{background:repLang===k?C.tealSoft:"transparent",color:repLang===k?C.ink:"#fff"}}>{l}</button>))}
           </div>
           <button onClick={()=>printPatientReport(patient,notes,repLang,(consultants.find(c=>c.id===patient.referrerId)||{}).name||"")} title="Patient-friendly progress report" className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:"rgba(255,255,255,0.12)",color:"#fff"}}><HeartPulse size={15}/>Patient report</button>
+          {role==="admin"&&<button onClick={()=>setLinkOpen(true)} title="Create & send the patient's private progress link" className="flex items-center gap-1.5 px-3 h-9 rounded-full text-[13px] font-semibold" style={{background:C.teal,color:C.ink}}><Link2 size={15}/>Patient link</button>}
           {role==="admin"&&onDelete&&<button onClick={()=>setConfirmDel(true)} title="Delete patient permanently" className="w-9 h-9 rounded-full flex items-center justify-center" style={{background:"rgba(192,57,43,0.22)"}}><Trash2 size={16} color="#fff"/></button>}
           <button onClick={onClose}><X size={22} color="#fff"/></button>
         </div>
@@ -3653,6 +3760,8 @@ function PatientFile({patient,notes,finances,credits=[],addCredit,removeCredit,c
       {invOpen&&<InvoiceBuilder patient={patient} seedRows={myFin} defaultFee={config?.defaultFee||0} onClose={()=>setInvOpen(false)}/>}
 
       {slOpen&&<SickLeaveModal patient={patient} onClose={()=>setSlOpen(false)}/>}
+
+      {linkOpen&&<PatientLinkModal patient={patient} updatePatient={updatePatient} onClose={()=>setLinkOpen(false)}/>}
 
       {confirmDel&&<div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{background:"rgba(30,42,58,0.55)"}} onClick={()=>setConfirmDel(false)}>
         <div className="w-full max-w-[400px] rounded-2xl p-6" style={{background:"#fff"}} onClick={e=>e.stopPropagation()}>
