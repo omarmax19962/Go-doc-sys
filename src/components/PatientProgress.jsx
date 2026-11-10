@@ -13,7 +13,7 @@ const NEURO = /cidp|stroke|cva|hemipleg|parkinson|neuro|gbs|guillain|\bms\b|mult
 
 // Go Doc clinic WhatsApp (international format, no +). The floating "contact us"
 // button on the patient page opens a chat with this number.
-const CLINIC_WA = '201144596039'
+const CLINIC_WA = '201509959866'
 
 // WhatsApp glyph (inline so the public page carries no icon dependency)
 function WhatsAppGlyph({ size = 20 }) {
