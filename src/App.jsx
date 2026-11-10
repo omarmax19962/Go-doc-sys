@@ -1993,7 +1993,7 @@ function BookingsInbox({bookingRequests=[],doctors=[],config,assignBookingDoctor
 }
 
 function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib,modalityLib,finances,credits=[],addCredit,removeCredit,expenses,growthMonths,config,packages,tasks,bookingRequests=[],assignBookingDoctor,doctorConfirmBooking,declineBooking,confirmBooking,addTask,updateTask,removeTask,setExerciseLib,setModalityLib,addPatient,assignDoctor,updatePatient,submitNote,reviewNote,openNoteForReview,savePatientSummary,aiSimplifyNote,addConsultant,removeConsultant,setReferrer,savePatientProtocol,addDoctor,removeDoctor,updateDoctorSlots,updateDoctorZoneSlots,updateFinance,settleFinances,removeFinance,addExpense,updateExpense,removeExpense,addGrowthMonth,updateGrowthMonth,removeGrowthMonth,dischargePatient,updatePatientStatus,updatePatientFiles,removePatient,removePatients,updateVisitStatus,updateConfig,addPackage,assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage,sendReminder,resolveReschedule,rescheduleVisit,deleteVisit,approveVisit,bookSession,notifs,markRead}){
-  const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
+  const[tab,setTab]=useState("today");const[intake,setIntake]=useState(false);const[sel,setSel]=useState(null);const[viewP,setViewP]=useState(null);const[linkP,setLinkP]=useState(null);const[newPkg,setNewPkg]=useState(false);const[managePkg,setManagePkg]=useState(null);
   const nameOf=id=>patients.find(p=>p.id===id)?.name||"—";
   // Notification deep-link: a tapped notification jumps to the relevant place.
   // A `view` (tab) takes priority; otherwise open the patient's file.
@@ -2084,6 +2084,7 @@ function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib
             <option value="">Assign…</option>{doctors.map(d=><option key={d.id}>{d.name}</option>)}</select></span>
           <span className="col-span-1 flex items-center gap-1 justify-end text-[11px] font-semibold" style={{color:p.payment==="Paid"?C.green:C.amber}}><Wallet size={12}/>{p.payment}</span>
           </div>
+          <button onClick={e=>{e.stopPropagation();setLinkP(p);}} title="Create & send patient link" className="mr-3 ml-1 shrink-0 flex items-center gap-1.5 px-3 h-9 rounded-full text-[12px] font-bold" style={{background:C.teal,color:C.ink}}><Link2 size={14}/>Link</button>
         </div>))}
         <p className="text-[11px] px-5 py-2.5" style={{color:C.grey,borderTop:`1px solid ${C.line}`}}><Wallet size={11} className="inline mr-1"/>Payment column is admin-only — doctors never see it.</p>
       </div>
@@ -2166,6 +2167,7 @@ function Admin({patients,visits,notes,pending,doctors,consultants=[],exerciseLib
 
     {intake&&<Intake doctors={doctors} patients={patients} onOpenExisting={p=>{setIntake(false);setViewP(p);}} onClose={()=>setIntake(false)} onSave={(p,b,d,doc,t)=>{addPatient(p,b,d,doc,t);setIntake(false);}}/>}
     {viewP&&<PatientFile patient={patients.find(p=>p.id===viewP.id)||viewP} notes={notes} finances={finances} credits={credits} addCredit={addCredit} removeCredit={removeCredit} config={config} visits={visits} doctors={doctors} consultants={consultants} setReferrer={setReferrer} savePatientProtocol={savePatientProtocol} bookSession={bookSession} rescheduleVisit={rescheduleVisit} deleteVisit={deleteVisit} onClose={()=>setViewP(null)} onDischarge={(rep)=>dischargePatient(viewP.id,rep)} onDelete={()=>{removePatient(viewP.id);setViewP(null);}} updatePatientStatus={updatePatientStatus} updatePatientFiles={updatePatientFiles} updatePatient={updatePatient} submitNote={submitNote} savePatientSummary={savePatientSummary} aiSimplifyNote={aiSimplifyNote} exerciseLib={exerciseLib} modalityLib={modalityLib}/>}
+    {linkP&&<PatientLinkModal patient={linkP} updatePatient={updatePatient} onClose={()=>setLinkP(null)}/>}
     {newPkg&&<NewPackage patients={patients} doctors={doctors} config={config} onClose={()=>setNewPkg(false)} onSave={(pkg,dates)=>{addPackage(pkg,dates);setNewPkg(false);}}/>}
     {managePkg&&<PackageManage pkg={packages.find(p=>p.id===managePkg)} visits={visits} doctors={doctors} config={config} nameOf={nameOf} onClose={()=>setManagePkg(null)} {...{assignSessionDate,addPackageSlot,removePackageSlot,reassignPackageDoctor,updatePackage,endPackage}}/>}
   </div>);
