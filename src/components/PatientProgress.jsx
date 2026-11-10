@@ -44,50 +44,80 @@ const to12 = (t) => {
   return `${h12}:${String(m || 0).padStart(2, '0')} ${ap}`
 }
 
-// Small dir-aware SVG line chart. values: array of {n, v}. yMax for scale (pain: lower=better).
-function Chart({ points, yMax, rtl, color, caption, en }) {
-  const W = 320, H = 158, padX = 28, padTop = 18, padBot = 16
+const shortDate = (iso, lang) => {
+  if (!iso) return ''
+  try { return new Date(iso + 'T00:00:00').toLocaleDateString(lang === 'en' ? 'en-GB' : 'ar-EG', { day: 'numeric', month: 'short' }) }
+  catch { return iso }
+}
+
+// Light dir-aware SVG line chart. Tap anywhere to read the value at the nearest
+// session. points: [{n, v, date}]. yMax sets the scale (pain: lower = better).
+function Chart({ points, yMax, rtl, color, caption, en, unit, lang }) {
+  const [sel, setSel] = useState(null)
+  const W = 320, H = 158, padX = 28, padTop = 20, padBot = 16
   if (!points.length) return null
   const innerH = H - padTop - padBot
-  const xs = (i) => {
-    const t = points.length === 1 ? 0.5 : i / (points.length - 1)
-    const tt = rtl ? 1 - t : t
-    return padX + tt * (W - padX * 2)
-  }
+  const n = points.length
+  const xs = (i) => { const t = n === 1 ? 0.5 : i / (n - 1); const tt = rtl ? 1 - t : t; return padX + tt * (W - padX * 2) }
   const ys = (v) => padTop + innerH - (Math.max(0, Math.min(yMax, v)) / yMax) * innerH
   const path = points.map((p, i) => `${i ? 'L' : 'M'}${xs(i).toFixed(1)},${ys(p.v).toFixed(1)}`).join(' ')
-  const last = points[points.length - 1]
-  const lastI = points.length - 1
-  const avg = points.reduce((a, p) => a + p.v, 0) / points.length
+  const area = `${path} L${xs(n - 1).toFixed(1)},${padTop + innerH} L${xs(0).toFixed(1)},${padTop + innerH} Z`
+  const lastI = n - 1
+  const avg = points.reduce((a, p) => a + p.v, 0) / n
   const avgY = ys(avg)
   const ticks = [0, yMax / 2, yMax]
-  const sparse = points.length <= 9
-  const pillX = W / 2   // centered on the average line
+  const selI = sel == null ? lastI : sel
+  const sp = points[selI], spx = xs(selI), spy = ys(sp.v)
+
+  const pick = (e) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left
+    let frac = r.width ? cx / r.width : 0
+    if (rtl) frac = 1 - frac
+    const span = (W - padX * 2) / W, start = padX / W
+    let t = (frac - start) / span
+    t = Math.max(0, Math.min(1, t))
+    setSel(Math.round(t * (n - 1)))
+  }
+
+  // tooltip geometry
+  const tpTxt = `${en ? 'pain' : 'ألم'} ${sp.v}${unit || ''}`
+  const dTxt = shortDate(sp.date, lang)
+  const tw = Math.max(58, tpTxt.length * 6.6, dTxt.length * 6.2) + 14
+  let tx = spx - tw / 2; tx = Math.max(2, Math.min(W - tw - 2, tx))
+  let ty = spy - 42; const below = ty < 2; if (below) ty = spy + 12
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={caption} style={{ display: 'block', overflow: 'visible' }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={caption}
+      onPointerDown={pick} onPointerMove={(e) => { if (e.buttons) pick(e) }}
+      style={{ display: 'block', overflow: 'visible', cursor: 'pointer', touchAction: 'none' }}>
+      <defs>
+        <linearGradient id="chArea" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={color} stopOpacity="0.16" />
+          <stop offset="1" stopColor={color} stopOpacity="0.01" />
+        </linearGradient>
+      </defs>
       {/* horizontal gridlines + y-axis labels */}
       {ticks.map((t, k) => (
         <g key={k}>
-          <line x1={padX} x2={W - padX} y1={ys(t)} y2={ys(t)} stroke="#EEECE6" strokeWidth="1" />
-          <text x={W - padX + 5} y={ys(t) + 3} fill="#B6BEC0" fontSize="9" textAnchor="start">{Math.round(t)}</text>
+          <line x1={padX} x2={W - padX} y1={ys(t)} y2={ys(t)} stroke="#EFEDE7" strokeWidth="1" />
+          <text x={W - padX + 5} y={ys(t) + 3} fill="#C2C9CB" fontSize="9" textAnchor="start">{Math.round(t)}</text>
         </g>
       ))}
-      {/* sparse vertical gridlines (only when few points) */}
-      {sparse && points.map((p, i) => (
-        <line key={i} x1={xs(i)} x2={xs(i)} y1={padTop} y2={padTop + innerH} stroke="#F0EEE8" strokeWidth="1" strokeDasharray="2 4" />
-      ))}
       {/* average line + pill */}
-      <line x1={padX} x2={W - padX} y1={avgY} y2={avgY} stroke={color} strokeWidth="1.4" strokeDasharray="5 4" opacity="0.55" />
+      <line x1={padX} x2={W - padX} y1={avgY} y2={avgY} stroke={color} strokeWidth="1.2" strokeDasharray="4 5" opacity="0.4" />
+      <rect x={W / 2 - 30} y={avgY - 9} width="60" height="18" rx="9" fill="#fff" stroke={color} strokeOpacity="0.4" />
+      <text x={W / 2} y={avgY + 3.5} fill={color} fontSize="9.5" fontWeight="800" textAnchor="middle">{en ? `Avg ${avg.toFixed(0)}` : `متوسط ${avg.toFixed(0)}`}</text>
+      {/* light area + line */}
+      <path d={area} fill="url(#chArea)" />
+      <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" opacity="0.92" />
+      {/* selected marker + guide + tooltip */}
+      <line x1={spx} x2={spx} y1={padTop} y2={padTop + innerH} stroke={color} strokeWidth="1" strokeDasharray="3 3" opacity="0.3" />
+      <circle cx={spx} cy={spy} r="5.5" fill={color} stroke="#fff" strokeWidth="2.5" />
       <g>
-        <rect x={pillX - 30} y={avgY - 10} width="60" height="19" rx="9.5" fill={color} />
-        <text x={pillX} y={avgY + 3.5} fill="#fff" fontSize="10" fontWeight="800" textAnchor="middle">{en ? `Avg ${avg.toFixed(0)}` : `متوسط ${avg.toFixed(0)}`}</text>
+        <rect x={tx} y={ty} width={tw} height="30" rx="8" fill={C.ink} />
+        <text x={tx + tw / 2} y={ty + 13} fill="#fff" fontSize="11" fontWeight="800" textAnchor="middle">{tpTxt}</text>
+        <text x={tx + tw / 2} y={ty + 24} fill="#C9D2D1" fontSize="8.5" textAnchor="middle">{dTxt}</text>
       </g>
-      {/* line + markers */}
-      <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-      {points.map((p, i) => (
-        <circle key={i} cx={xs(i)} cy={ys(p.v)} r={i === lastI ? 5 : 3} fill={i === lastI ? color : '#fff'} stroke={color} strokeWidth="2" />
-      ))}
-      <text x={xs(lastI)} y={ys(last.v) - 10} fill={C.ink} fontSize="13" fontWeight="800" textAnchor="middle">{last.v}</text>
     </svg>
   )
 }
@@ -183,7 +213,7 @@ export default function PatientProgress() {
       .map((s) => (which === 'pain' ? s.pain : s.progress))
       .map((v) => (v === null || v === undefined ? null : Number(v)))
     const present = arr.map((v, i) => ({ v, i })).filter((x) => x.v !== null && !isNaN(x.v))
-    return { present, first: present.length ? present[0].v : null, last: present.length ? present[present.length - 1].v : null, points: present.map((x, k) => ({ n: k + 1, v: x.v })) }
+    return { present, first: present.length ? present[0].v : null, last: present.length ? present[present.length - 1].v : null, points: present.map((x, k) => ({ n: k + 1, v: x.v, date: (d.sessions[x.i] || {}).date })) }
   }
   const painS = buildSeries('pain')
   const funcS = buildSeries('function')
@@ -243,7 +273,10 @@ export default function PatientProgress() {
       {/* next session */}
       {next && (
         <Card accent>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.teal, textTransform: 'uppercase', marginBottom: 4 }}>{en ? 'Next session' : 'جلستك الجاية'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ width: 26, height: 26, borderRadius: 8, background: 'rgba(46,110,115,.1)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>📅</span>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, color: C.teal, textTransform: 'uppercase' }}>{en ? 'Next session' : 'جلستك الجاية'}</span>
+          </div>
           <div style={{ fontSize: 17, fontWeight: 800, color: C.ink }}>
             {fmtDate(next.date, lang)}{next.hasTime ? ` · ${en ? next.time : to12(next.time)}` : ''}
           </div>
@@ -279,7 +312,7 @@ export default function PatientProgress() {
           ? <FunctionViz points={points} first={first} last={last} en={en} rtl={!en} />
           : (points.length >= 1
             ? <>
-                <Chart points={points} yMax={10} rtl={!en} color={toneColor === C.ink ? C.teal : toneColor} caption={headline} en={en} />
+                <Chart points={points} yMax={10} rtl={!en} color={toneColor === C.ink ? C.teal : toneColor} caption={headline} en={en} unit="/10" lang={lang} />
                 <div style={{ fontSize: 11, color: C.grey, textAlign: 'center', marginTop: 2 }}>{en ? 'lower = less pain · by session' : 'رقم أقل = ألم أقل · بالجلسة'}</div>
               </>
             : <div style={{ fontSize: 12.5, color: C.grey, textAlign: 'center', padding: '14px 0' }}>{en ? "We'll start tracking pain from your first session." : 'هنبدأ نقيس الألم من أول جلسة.'}</div>)}
@@ -393,9 +426,9 @@ function SessionSheet({ s, num, lang, en, onClose }) {
   ].filter(([, , v]) => v && String(v).trim())
   const stop = (e) => e.stopPropagation()
   const Stat = ({ label, value }) => (
-    <div style={{ flex: '1 1 90px', background: '#fff', border: '1px solid #E3E7E5', borderRadius: 14, padding: '10px 12px' }}>
+    <div style={{ flex: '1 1 90px', background: '#fff', border: '1px solid rgba(227,231,229,.7)', borderRadius: 16, padding: '11px 13px', boxShadow: '0 1px 2px rgba(16,42,46,.04), 0 6px 16px rgba(16,42,46,.04)' }}>
       <div style={{ fontSize: 11, color: C.grey, marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 18, fontWeight: 800, color: C.ink }}>{value}</div>
+      <div style={{ fontSize: 19, fontWeight: 800, color: C.ink }}>{value}</div>
     </div>
   )
   const Section = ({ label, children }) => (
@@ -407,7 +440,7 @@ function SessionSheet({ s, num, lang, en, onClose }) {
   const anyMetric = painBefore != null || s.painAfter != null || s.progress != null || resp
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(15,30,30,.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={stop} dir={en ? 'ltr' : 'rtl'} style={{ width: '100%', maxWidth: 480, background: '#F4F1EA', borderRadius: '22px 22px 0 0', padding: '10px 18px 24px', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 -8px 30px rgba(0,0,0,.18)', fontFamily: "'IBM Plex Sans Arabic','Tajawal',system-ui,sans-serif" }}>
+      <div onClick={stop} dir={en ? 'ltr' : 'rtl'} style={{ width: '100%', maxWidth: 480, background: 'linear-gradient(180deg, #FBF3EC 0%, #F6F1EA 120px)', borderRadius: '24px 24px 0 0', padding: '10px 18px 26px', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 -10px 34px rgba(16,42,46,.2)', fontFamily: "'IBM Plex Sans Arabic','Tajawal',system-ui,sans-serif" }}>
         <div style={{ width: 40, height: 5, borderRadius: 999, background: '#CBD3D2', margin: '4px auto 16px' }} />
         {/* header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -433,7 +466,7 @@ function SessionSheet({ s, num, lang, en, onClose }) {
               <div style={{ marginBottom: mod.length ? 8 : 0 }}>
                 {mod.length > 0 && <div style={{ fontSize: 12, color: C.grey, marginBottom: 4 }}>{en ? 'Exercises' : 'تمارين'}</div>}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {ex.map((e, k) => <span key={k} style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, background: '#fff', border: '1px solid #E3E7E5', borderRadius: 10, padding: '5px 10px' }}>{typeof e === 'string' ? e : (e.name || '')}</span>)}
+                  {ex.map((e, k) => <span key={k} style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, background: '#fff', border: '1px solid rgba(227,231,229,.8)', borderRadius: 11, padding: '6px 11px', boxShadow: '0 1px 2px rgba(16,42,46,.04)' }}>{typeof e === 'string' ? e : (e.name || '')}</span>)}
                 </div>
               </div>
             )}
@@ -441,7 +474,7 @@ function SessionSheet({ s, num, lang, en, onClose }) {
               <div>
                 <div style={{ fontSize: 12, color: C.grey, marginBottom: 4 }}>{en ? 'Modalities' : 'أجهزة ووسائل علاجية'}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {mod.map((e, k) => <span key={k} style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, background: '#fff', border: '1px solid #E3E7E5', borderRadius: 10, padding: '5px 10px' }}>{typeof e === 'string' ? e : (e.name || '')}</span>)}
+                  {mod.map((e, k) => <span key={k} style={{ fontSize: 12.5, fontWeight: 600, color: C.ink, background: '#fff', border: '1px solid rgba(227,231,229,.8)', borderRadius: 11, padding: '6px 11px', boxShadow: '0 1px 2px rgba(16,42,46,.04)' }}>{typeof e === 'string' ? e : (e.name || '')}</span>)}
                 </div>
               </div>
             )}
