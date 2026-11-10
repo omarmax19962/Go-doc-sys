@@ -11,6 +11,19 @@ const C = {
 }
 const NEURO = /cidp|stroke|cva|hemipleg|parkinson|neuro|gbs|guillain|\bms\b|multiple sclerosis|demyelinat|spinal cord|parapleg|quadripleg|tetrapleg|palsy|myopathy|neuropath|ataxia/i
 
+// Go Doc clinic WhatsApp (international format, no +). The floating "contact us"
+// button on the patient page opens a chat with this number.
+const CLINIC_WA = '201144596039'
+
+// WhatsApp glyph (inline so the public page carries no icon dependency)
+function WhatsAppGlyph({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.945C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.556-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.82 9.82 0 001.517 5.248l-.999 3.648 3.971-1.043zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+    </svg>
+  )
+}
+
 export function patientToken() {
   if (typeof window === 'undefined') return null
   const m = window.location.pathname.match(/^\/p\/([A-Za-z0-9_-]{8,})\/?$/)
@@ -262,6 +275,7 @@ export default function PatientProgress() {
         <div style={{ textAlign: 'center', fontSize: 11.5, color: C.grey, marginTop: 14, lineHeight: 1.7 }}>
           {en ? 'This page is private to you — please don’t share it.' : 'الصفحة دي خاصة بيك — متشاركهاش.'}
         </div>
+        <div style={{ height: 64 }} aria-hidden="true" />
       </Shell>
 
       {allView && (
@@ -269,6 +283,19 @@ export default function PatientProgress() {
           onOpen={(ss, n) => setSheet({ s: ss, num: n })} onClose={() => setAllView(false)} />
       )}
       {sheet && <SessionSheet s={sheet.s} num={sheet.num} lang={lang} en={en} onClose={() => setSheet(null)} />}
+
+      {/* floating WhatsApp — contact the clinic directly */}
+      {!sheet && (
+        <a
+          href={`https://wa.me/${CLINIC_WA}?text=${encodeURIComponent(en ? `Hi, I'm ${d.firstName} — I'd like to get in touch about my Go Doc sessions.` : `مرحبا، أنا ${d.firstName} 👋 حابب أتواصل معاكم بخصوص جلساتي في Go Doc.`)}`}
+          target="_blank" rel="noreferrer"
+          aria-label={en ? 'Contact us on WhatsApp' : 'تواصل معانا على واتساب'}
+          style={{ position: 'fixed', bottom: 18, insetInlineEnd: 16, zIndex: 56, display: 'inline-flex', alignItems: 'center', gap: 9, background: '#25D366', color: '#fff', borderRadius: 999, padding: '12px 18px', boxShadow: '0 8px 22px rgba(37,211,102,.38)', textDecoration: 'none', fontWeight: 800, fontSize: 14, fontFamily: "'IBM Plex Sans Arabic','Tajawal',system-ui,sans-serif" }}
+        >
+          <WhatsAppGlyph size={21} />
+          <span>{en ? 'Contact us' : 'تواصل معانا'}</span>
+        </a>
+      )}
     </>
   )
 }
@@ -296,7 +323,7 @@ function SessionRow({ s, num, metric, lang, en, border, onOpen }) {
 function AllSessions({ sessions, done, metric, lang, en, fem, onOpen, onClose }) {
   return (
     <div dir={en ? 'ltr' : 'rtl'} style={{ position: 'fixed', inset: 0, zIndex: 55, background: '#F4F1EA', overflowY: 'auto', fontFamily: "'IBM Plex Sans Arabic','Tajawal',system-ui,sans-serif" }}>
-      <div style={{ maxWidth: 480, margin: '0 auto', padding: '16px 16px 40px' }}>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '16px 16px 90px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <button onClick={onClose} style={{ fontSize: 13, fontWeight: 700, color: C.teal, background: '#fff', border: `1px solid ${C.soft}`, borderRadius: 999, padding: '7px 14px', cursor: 'pointer' }}>{en ? '‹ Back' : 'رجوع ›'}</button>
           <div style={{ fontSize: 19, fontWeight: 800, color: C.ink, fontFamily: 'Georgia, serif' }}>{en ? `All sessions (${done})` : `كل الجلسات (${done})`}</div>
