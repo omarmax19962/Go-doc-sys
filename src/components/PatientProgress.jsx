@@ -115,6 +115,8 @@ export default function PatientProgress() {
   const token = patientToken()
   const [lang, setLang] = useState('ar')
   const [state, setState] = useState({ loading: true, data: null, error: null })
+  const [showAll, setShowAll] = useState(false)
+  const [openSet, setOpenSet] = useState({})
 
   useEffect(() => {
     let on = true
@@ -218,22 +220,42 @@ export default function PatientProgress() {
           )}
       </Card>
 
-      {/* sessions done */}
+      {/* sessions done — full history, each session openable */}
       <Card>
-        <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginBottom: 8 }}>{en ? `Sessions done (${done})` : `الجلسات اللي ${fem ? 'خلصتيها' : 'خلصتها'} (${done})`}</div>
-        {last5.slice(0, 6).map((s, i) => {
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.ink, marginBottom: 4 }}>{en ? `Sessions done (${done})` : `الجلسات اللي ${fem ? 'خلصتيها' : 'خلصتها'} (${done})`}</div>
+        <div style={{ fontSize: 12, color: C.grey, marginBottom: 8 }}>{en ? 'Tap any session to open its details.' : 'دوس على أي جلسة تفتح تفاصيلها.'}</div>
+        {(showAll ? last5 : last5.slice(0, 6)).map((s, i) => {
           const metric = track === 'pain' ? (s.pain != null ? `${en ? 'pain' : 'ألم'} ${s.pain}/10` : null) : (s.progress != null ? `${s.progress}%` : null)
+          const num = done - i   // newest first → session number counts down
+          const hasNote = !!(s.note && String(s.note).trim())
+          const isOpen = !!openSet[i]
           return (
-            <div key={i} style={{ padding: '8px 0', borderTop: i ? `1px solid ${C.line}` : 'none' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: C.ink }}>{fmtDate(s.date, lang)}</span>
-                {metric && <span style={{ fontSize: 11, fontWeight: 700, color: C.teal, background: '#EAF6F4', borderRadius: 999, padding: '2px 9px', whiteSpace: 'nowrap' }}>{metric}</span>}
-              </div>
-              {s.note && <div dir="auto" style={{ fontSize: 12.5, color: C.grey, marginTop: 3, whiteSpace: 'pre-line', borderInlineStart: `3px solid ${C.soft}`, paddingInlineStart: 8 }}>{s.note}</div>}
+            <div key={i} style={{ borderTop: i ? `1px solid ${C.line}` : 'none' }}>
+              <button
+                onClick={() => hasNote && setOpenSet((o) => ({ ...o, [i]: !o[i] }))}
+                style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '10px 0', background: 'none', border: 'none', textAlign: en ? 'left' : 'right', cursor: hasNote ? 'pointer' : 'default', font: 'inherit' }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: C.teal, background: '#EAF6F4', borderRadius: 8, padding: '2px 7px', whiteSpace: 'nowrap' }}>{en ? `#${num}` : `جلسة ${num}`}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.ink, whiteSpace: 'nowrap' }}>{fmtDate(s.date, lang)}</span>
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+                  {metric && <span style={{ fontSize: 11, fontWeight: 700, color: C.teal, background: '#EAF6F4', borderRadius: 999, padding: '2px 9px' }}>{metric}</span>}
+                  {hasNote && <span style={{ fontSize: 10, color: C.grey, transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>}
+                </span>
+              </button>
+              {isOpen && hasNote && <div dir="auto" style={{ fontSize: 12.5, color: C.grey, margin: '0 0 10px', whiteSpace: 'pre-line', borderInlineStart: `3px solid ${C.soft}`, paddingInlineStart: 8 }}>{s.note}</div>}
             </div>
           )
         })}
-        {done > 6 && <div style={{ fontSize: 12, color: C.grey, marginTop: 8 }}>{en ? `+ ${done - 6} earlier sessions` : `+ ${done - 6} جلسات أقدم`}</div>}
+        {done > 6 && (
+          <button
+            onClick={() => setShowAll((v) => !v)}
+            style={{ width: '100%', marginTop: 10, padding: '9px 0', fontSize: 12.5, fontWeight: 700, color: C.teal, background: '#F4FBFC', border: `1px solid ${C.soft}`, borderRadius: 12, cursor: 'pointer' }}
+          >
+            {showAll ? (en ? 'Show less' : 'عرض أقل') : (en ? `Show all ${done} sessions` : `عرض كل الجلسات (${done})`)}
+          </button>
+        )}
       </Card>
 
       <div style={{ textAlign: 'center', fontSize: 11.5, color: C.grey, marginTop: 14, lineHeight: 1.7 }}>
